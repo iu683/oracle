@@ -82,16 +82,16 @@ system_reboot() {
 while true; do
     clear
     echo -e "${CYAN}================= VPS 管理菜单 =================${RESET}"
-    echo -e "${GREEN}1.${RESET} 开设/移除 Swap"
-    echo -e "${GREEN}2.${RESET} 安装 Docker"
-    echo -e "${GREEN}3.${RESET} 单个开设 Docker 小鸡"
-    echo -e "${GREEN}4.${RESET} 批量开设 Docker 小鸡"
-    echo -e "${GREEN}5.${RESET} 删除 Docker 容器和镜像"
-    echo -e "${GREEN}6.${RESET} 重启系统"
-    echo -e "${GREEN}0.${RESET} 退出脚本"
+    echo -e "${GREEN}1. 开设/移除 Swap${RESET}"
+    echo -e "${GREEN}2. 安装 Docker${RESET}"
+    echo -e "${GREEN}3. 单个开设 Docker 小鸡${RESET}"
+    echo -e "${GREEN}4. 批量开设 Docker 小鸡${RESET}"
+    echo -e "${GREEN}5. 删除 Docker 容器和镜像${RESET}"
+    echo -e "${GREEN}6. 重启系统${RESET}"
+    echo -e "${GREEN}0. 退出脚本${RESET}"
     echo -e "${CYAN}===============================================${RESET}"
 
-    read -p "请输入你的选择 [0-6]: " choice
+    read -p "${GREEN}请输入你的选择 [0-6]: ${RESET}" choice
 
     case "$choice" in
         1) swap_manage ;;
