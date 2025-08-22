@@ -6,7 +6,7 @@ YELLOW="\033[33m"
 RED="\033[31m"
 RESET="\033[0m"
 
-INSTALL_DIR="/root/dujiaoka"
+INSTALL_DIR="/root"
 SRC_DIR="$INSTALL_DIR/dujiaoka"
 
 echo -e "${GREEN}=== 开始部署 Dujiaoka Docker 环境 ===${RESET}"
@@ -32,9 +32,7 @@ else
     cd "$INSTALL_DIR"
 fi
 
-# -------------------------------
-# 1. Dockerfile
-# -------------------------------
+# 1. 生成 Dockerfile
 cat > "$INSTALL_DIR/Dockerfile" <<'EOF'
 FROM webdevops/php-nginx:7.4
 WORKDIR /app
@@ -46,9 +44,7 @@ RUN echo "#!/bin/bash\nphp artisan queue:work >/tmp/work.log 2>&1 &\nsupervisord
 CMD [ "sh", "-c", "/app/start.sh" ]
 EOF
 
-# -------------------------------
-# 2. laravel-worker.conf
-# -------------------------------
+# 2. 生成 laravel-worker.conf
 cat > "$INSTALL_DIR/laravel-worker.conf" <<'EOF'
 [program:laravel-worker]
 process_name=%(program_name)s_%(process_num)02d
@@ -61,4 +57,80 @@ redirect_stderr=true
 stdout_logfile=/app/storage/logs/worker.log
 EOF
 
-echo -e "${GREEN}✅ 部署完成${RESET}"
+# 3. 生成 docker-compose.yml
+cat > "$INSTALL_DIR/docker-compose.yml" <<'EOF'
+services:
+  web:
+    build: .
+    container_name: dujiaoka
+    ports:
+      - "8020:80"
+      - "9000:9000"
+    volumes:
+      - ./dujiaoka/.env:/app/.env
+      - ./dujiaoka/install.lock:/app/install.lock
+      - ./dujiaoka/public/uploads:/app/public/uploads
+    environment:
+      WEB_DOCUMENT_ROOT: "/app/public"
+      TZ: Asia/Shanghai
+    tty: true
+    restart: always
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: mysql:5.7
+    container_name: dujiaoka_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: dujiaoka
+      MYSQL_USER: dujiaoka
+      MYSQL_PASSWORD: dujiaoka123
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql:/var/lib/mysql
+
+  redis:
+    image: redis:6
+    container_name: dujiaoka_redis
+    restart: always
+    ports:
+      - "6379:6379"
+EOF
+
+# 4. 生成 .env 配置
+cat > "$SRC_DIR/.env" <<'EOF'
+APP_NAME=独角数卡
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost
+
+LOG_CHANNEL=stack
+
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=dujiaoka
+DB_USERNAME=dujiaoka
+DB_PASSWORD=dujiaoka123
+
+REDIS_HOST=redis
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+BROADCAST_DRIVER=log
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+
+CACHE_DRIVER=file
+QUEUE_CONNECTION=redis
+
+DUJIAO_ADMIN_LANGUAGE=zh_CN
+ADMIN_ROUTE_PREFIX=/admin
+EOF
+
+echo -e "${GREEN}✅ 部署完成a${RESET}"
