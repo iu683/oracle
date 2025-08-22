@@ -6,18 +6,38 @@ YELLOW="\033[33m"
 RED="\033[31m"
 RESET="\033[0m"
 
+INSTALL_DIR="/root/dujiaoka"
+SRC_DIR="$INSTALL_DIR/dujiaoka"
+
 echo -e "${GREEN}=== 开始部署 Dujiaoka Docker 环境 ===${RESET}"
 
-# 创建目录
-mkdir -p dujiaoka mysql redis logs
-cd dujiaoka
+# 安装 git
+if ! command -v git &>/dev/null; then
+    echo -e "${GREEN}安装 git...${RESET}"
+    yum install -y git
+fi
+
+# 创建安装目录
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+
+# 拉取源码（如果不存在就 clone）
+if [ ! -d "$SRC_DIR" ]; then
+    echo -e "${GREEN}拉取 Dujiaoka 源码...${RESET}"
+    git clone https://github.com/assimon/dujiaoka.git
+else
+    echo -e "${GREEN}源码已存在，执行 git pull 更新...${RESET}"
+    cd "$SRC_DIR"
+    git pull
+    cd "$INSTALL_DIR"
+fi
 
 # 1. 生成 Dockerfile
-cat > Dockerfile <<'EOF'
+cat > "$INSTALL_DIR/Dockerfile" <<'EOF'
 FROM webdevops/php-nginx:7.4
 WORKDIR /app
-COPY . /app
-RUN composer install --ignore-platform-reqs
+COPY dujiaoka/ /app
+RUN COMPOSER_ALLOW_SUPERUSER=1 composer install --ignore-platform-reqs
 RUN echo "#!/bin/bash\nphp artisan queue:work >/tmp/work.log 2>&1 &\nsupervisord" > /app/start.sh \
     && chmod +x /app/start.sh \
     && chmod -R 777 /app
@@ -25,7 +45,7 @@ CMD [ "sh", "-c", "/app/start.sh" ]
 EOF
 
 # 2. 生成 laravel-worker.conf
-cat > laravel-worker.conf <<'EOF'
+cat > "$INSTALL_DIR/laravel-worker.conf" <<'EOF'
 [program:laravel-worker]
 process_name=%(program_name)s_%(process_num)02d
 command=php /app/artisan queue:work --sleep=3 --tries=3 --daemon
@@ -38,8 +58,7 @@ stdout_logfile=/app/storage/logs/worker.log
 EOF
 
 # 3. 生成 docker-compose.yml
-cat > docker-compose.yml <<'EOF'
-version: "2.2"
+cat > "$INSTALL_DIR/docker-compose.yml" <<'EOF'
 services:
   web:
     build: .
@@ -83,7 +102,7 @@ services:
 EOF
 
 # 4. 生成 .env 配置
-cat > .env <<'EOF'
+cat > "$SRC_DIR/.env" <<'EOF'
 APP_NAME=独角数卡
 APP_ENV=local
 APP_KEY=
@@ -92,7 +111,6 @@ APP_URL=http://localhost
 
 LOG_CHANNEL=stack
 
-# 数据库配置
 DB_CONNECTION=mysql
 DB_HOST=db
 DB_PORT=3306
@@ -100,7 +118,6 @@ DB_DATABASE=dujiaoka
 DB_USERNAME=dujiaoka
 DB_PASSWORD=dujiaoka123
 
-# redis配置
 REDIS_HOST=redis
 REDIS_PASSWORD=null
 REDIS_PORT=6379
@@ -116,8 +133,8 @@ DUJIAO_ADMIN_LANGUAGE=zh_CN
 ADMIN_ROUTE_PREFIX=/admin
 EOF
 
-# 5. 生成 menu.sh（启动服务自动检测 APP_KEY）
-cat > menu.sh <<'EOF'
+# 5. 生成 menu.sh（自动检测 APP_KEY）
+cat > "$INSTALL_DIR/menu.sh" <<'EOF'
 #!/bin/bash
 set -e
 
@@ -158,7 +175,6 @@ start_service() {
     echo -e "${GREEN}🚀 启动 Dujiaoka 服务中...${RESET}"
     docker-compose -f $COMPOSE_FILE up -d
 
-    # 检测 APP_KEY
     APP_KEY=$(grep '^APP_KEY=' $ENV_FILE | cut -d '=' -f2)
     if [ -z "$APP_KEY" ]; then
         echo -e "${GREEN}⚙️ 生成 APP_KEY...${RESET}"
@@ -203,13 +219,14 @@ show_logs() {
 menu
 EOF
 
-chmod +x menu.sh
+chmod +x "$INSTALL_DIR/menu.sh"
 
-# 6. 自动启动服务并生成 APP_KEY
+# 6. 自动启动服务并检测 APP_KEY
 echo -e "${GREEN}🚀 自动启动服务并检测 APP_KEY...${RESET}"
+cd "$INSTALL_DIR"
 docker-compose -f docker-compose.yml up -d
 
-APP_KEY=$(grep '^APP_KEY=' .env | cut -d '=' -f2)
+APP_KEY=$(grep '^APP_KEY=' "$SRC_DIR/.env" | cut -d '=' -f2)
 if [ -z "$APP_KEY" ]; then
     echo -e "${GREEN}⚙️ 生成 APP_KEY...${RESET}"
     docker-compose -f docker-compose.yml exec -T web php artisan key:generate
@@ -218,4 +235,4 @@ else
     echo -e "${GREEN}🔑 APP_KEY 已存在，跳过生成${RESET}"
 fi
 
-echo -e "${GREEN}✅ 文件已生成，可执行 ./menu.sh 管理 Dujiaoka${RESET}"
+echo -e "${GREEN}✅ 部署完成，可执行 ./menu.sh 管理 Dujiaoka${RESET}"
