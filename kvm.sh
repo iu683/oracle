@@ -110,12 +110,12 @@ function clean_all() {
 while true; do
     clear
     echo -e "${CYAN}========= PVE NAT VPS 管理菜单 =========${RESET}"
-    echo "1. 环境检测 & 安装 PVE"
-    echo "2. 配置环境 & 开设 KVM 小鸡"
-    echo "3. 删除所有虚拟机 & 清理网络"
-    echo "0. 退出"
+    echo "${GREEN}1. 环境检测 & 安装 PVE${RESET}"
+    echo "${GREEN}2. 配置环境 & 开设 KVM 小鸡${RESET}"
+    echo "${GREEN}3. 删除所有虚拟机 & 清理网络${RESET}"
+    echo "${GREEN}0. 退出"
     echo "========================================="
-    read -p "请选择操作 [0-3]: " choice
+    read -p "${GREEN}请选择操作 [0-3]: ${RESET}" choice
 
     case $choice in
         1) install_base ;;
