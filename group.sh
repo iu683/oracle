@@ -31,6 +31,9 @@ if [ ! -f "$SERVERS_FILE" ] || [ ! -s "$SERVERS_FILE" ]; then
     echo "[]" > "$SERVERS_FILE"
 fi
 
+# **导出环境变量给 Python 子进程使用**
+export SERVERS_FILE="$SERVERS_FILE"
+
 send_stats() { echo -e ">>> [$1]"; }
 
 # Python管理JSON函数
