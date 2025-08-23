@@ -1,5 +1,5 @@
 #!/bin/bash
-# VPS <-> GitHub 工具完整版本 (SSH 自动生成 Key + 上传/下载 + 进度条 + 自动返回菜单)
+# VPS <-> GitHub 工具完整版本 (SSH 自动生成 Key + 上传/下载 + 自动返回菜单)
 
 BASE_DIR="$HOME/ghupload"
 CONFIG_FILE="$BASE_DIR/.ghupload_config"
@@ -95,7 +95,8 @@ init_config() {
     COMMIT_PREFIX=${COMMIT_PREFIX:-VPS-Upload}
 
     while true; do
-        read -p "请输入上传目录路径 (绝对路径): " UPLOAD_DIR
+        read -p "请输入上传目录路径 (绝对路径或相对路径): " UPLOAD_DIR
+        UPLOAD_DIR=$(realpath "$UPLOAD_DIR")
         [ -d "$UPLOAD_DIR" ] && break || echo -e "${YELLOW}⚠️ 目录不存在，请重新输入${RESET}"
     done
 
@@ -184,7 +185,8 @@ upload_files() {
 
 download_from_github() {
     load_config
-    read -p "请输入下载目录 (绝对路径): " DOWNLOAD_DIR
+    read -p "请输入下载目录 (绝对或相对路径): " DOWNLOAD_DIR
+    DOWNLOAD_DIR=$(realpath "$DOWNLOAD_DIR")
     mkdir -p "$DOWNLOAD_DIR"
 
     TMP_DIR=$(mktemp -d)
@@ -280,5 +282,4 @@ menu() {
     menu
 }
 
-# 自动启动菜单
 menu
