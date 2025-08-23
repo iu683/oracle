@@ -21,8 +21,7 @@ fi
 
 send_stats() { echo -e ">>> [$1]"; }
 
-# 临时内存服务器列表
-# 每台服务器是 "name:host:port:user:pwd"
+# 临时内存服务器列表，每台服务器是 "name:host:port:user:pwd"
 SERVERS=()
 
 # 显示服务器列表
@@ -37,7 +36,7 @@ list_servers() {
     fi
 }
 
-# 批量执行命令（异步执行 + 日志 + 最终状态）
+# 批量执行命令（异步 + 临时状态文件）
 run_commands_on_servers() {
     cmd="$1"
     if [ ${#SERVERS[@]} -eq 0 ]; then
@@ -46,19 +45,22 @@ run_commands_on_servers() {
         return
     fi
 
-    declare -A STATUS
+    tmp_dir=$(mktemp -d)
     pids=()
 
     for srv in "${SERVERS[@]}"; do
         IFS=":" read -r name host port user pwd <<< "$srv"
-        logfile="/tmp/${name}-$(date +%Y%m%d%H%M%S).log"
-        STATUS["$name"]="执行中"
+        logfile="$tmp_dir/${name}.log"
+        statusfile="$tmp_dir/${name}.status"
+
+        # 初始状态
+        echo "执行中" > "$statusfile"
 
         (
             if sshpass -p "$pwd" ssh -o StrictHostKeyChecking=no -p "$port" "$user@$host" "$cmd" &> "$logfile"; then
-                STATUS["$name"]="✅ 成功"
+                echo "✅ 成功" > "$statusfile"
             else
-                STATUS["$name"]="❌ 失败"
+                echo "❌ 失败" > "$statusfile"
             fi
         ) &
         pids+=($!)
@@ -71,10 +73,17 @@ run_commands_on_servers() {
 
     # 显示最终状态
     echo "===== 批量执行最终状态 ====="
-    for n in "${!STATUS[@]}"; do
-        echo -e "$n: ${STATUS[$n]}"
+    for srv in "${SERVERS[@]}"; do
+        IFS=":" read -r name host port user pwd <<< "$srv"
+        if [ -f "$tmp_dir/${name}.status" ]; then
+            status=$(cat "$tmp_dir/${name}.status")
+        else
+            status="❌ 未知"
+        fi
+        echo -e "$name: $status"
     done
     echo "============================"
+    rm -rf "$tmp_dir"
     read -n1 -s -r -p "按任意键返回菜单..."
 }
 
