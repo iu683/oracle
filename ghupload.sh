@@ -185,22 +185,33 @@ upload_files() {
 
 download_from_github() {
     load_config
-    read -p "请输入下载目录 (绝对或相对路径): " DOWNLOAD_DIR
-    DOWNLOAD_DIR=$(realpath "$DOWNLOAD_DIR")
+    read -p "请输入下载目录 (绝对路径): " DOWNLOAD_DIR
+    DOWNLOAD_DIR=$(realpath "$DOWNLOAD_DIR" 2>/dev/null || echo "$DOWNLOAD_DIR")
     mkdir -p "$DOWNLOAD_DIR"
 
     TMP_DIR=$(mktemp -d)
-    echo -e "${GREEN}ℹ️ 正在从 GitHub 仓库下载...${RESET}"
-    git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >>"$LOG_FILE" 2>&1 || { echo -e "${RED}❌ Git clone 失败${RESET}" | tee -a "$LOG_FILE"; rm -rf "$TMP_DIR"; read -p "按回车返回菜单..."; return; }
+    echo -e "${GREEN}ℹ️ 正在从 GitHub 仓库下载完整历史...${RESET}"
 
+    # 克隆完整仓库历史
+    if ! git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >>"$LOG_FILE" 2>&1; then
+        echo -e "${RED}❌ Git clone 失败，请检查仓库地址和 SSH Key${RESET}" | tee -a "$LOG_FILE"
+        rm -rf "$TMP_DIR"
+        read -p "按回车返回菜单..."
+        return
+    fi
+
+    # 只拷贝实际文件，忽略 .git
+    shopt -s dotglob
     FILE_LIST=("$TMP_DIR/repo"/*)
-    TOTAL_FILES=${#FILE_LIST[@]}
     COUNT=0
+    TOTAL_FILES=${#FILE_LIST[@]}
     for f in "${FILE_LIST[@]}"; do
         ((COUNT++))
-        cp -r "$f" "$DOWNLOAD_DIR/"
+        cp -r "$f" "$DOWNLOAD_DIR/" 2>/dev/null
         echo -ne "${GREEN}下载进度: $COUNT/$TOTAL_FILES 文件\r${RESET}"
     done
+    shopt -u dotglob
+
     echo -e "\n${GREEN}✅ 下载完成，文件已保存到 $DOWNLOAD_DIR${RESET}" | tee -a "$LOG_FILE"
     rm -rf "$TMP_DIR"
     read -p "按回车返回菜单..."
