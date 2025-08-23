@@ -153,9 +153,15 @@ fail2ban_menu() {
                 ;;
             6)
                 check_fail2ban
-                echo -e "${GREEN}进入日志实时监控，按 q 或 Ctrl+C 停止并返回菜单${RESET}"
+                echo -e "${GREEN}进入日志实时监控，按 q 返回菜单${RESET}"
+                # 使用子 shell 来避免退出整个脚本
+                (
                 less +F /var/log/fail2ban.log
+                )
+                echo -e "${GREEN}已退出日志监控，返回菜单${RESET}"
+                read -p $'\033[32m按回车继续...\033[0m'
                 ;;
+
             7)
                 uninstall_fail2ban
                 break
