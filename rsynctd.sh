@@ -18,30 +18,24 @@ touch "$CONFIG_FILE"
 send_stats() { :; }  # 占位函数
 
 install() {
-    if ! command -v "$1" &> /dev/null; then
+    if ! command -v "$1" &>/dev/null; then
         echo "安装依赖: $1"
-        if command -v apt &> /dev/null; then
-            apt update && apt install -y "$1"
-        elif command -v yum &> /dev/null; then
-            yum install -y "$1"
+        if command -v apt &>/dev/null; then
+            apt update -qq && apt install -y "$1" >/dev/null
+        elif command -v yum &>/dev/null; then
+            yum install -y "$1" >/dev/null
         fi
     fi
 }
 
-# -------------------------
-# 列表任务
-# -------------------------
 list_tasks() {
     echo -e "${GREEN}已保存的同步任务:${RESET}"
     echo "---------------------------------"
     [[ ! -s "$CONFIG_FILE" ]] && echo "暂无任务" && return
-    awk -F'|' '{printf "%d - %s: %s -> %s:%s [%s]\n", NR, $1, $2, $3, $4, $6}' "$CONFIG_FILE"
+    awk -F'|' '{printf "%d - %s: %s -> %s [%s]\n", NR, $1, $2, $4, $6}' "$CONFIG_FILE"
     echo "---------------------------------"
 }
 
-# -------------------------
-# 添加任务
-# -------------------------
 add_task() {
     send_stats "添加新同步任务"
     read -e -p "任务名称: " name
@@ -59,14 +53,13 @@ add_task() {
             auth_method="password"
             ;;
         2)
-            echo "粘贴密钥 (完成后按两次回车):"
-            password_or_key=""
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                [[ -z "$line" && "$password_or_key" == *"PRIVATE KEY"* ]] && break
-                password_or_key+="$line"$'\n'
-            done
-            key_file="$KEY_DIR/${name}_sync.key"
-            echo -n "$password_or_key" > "$key_file"
+            read -e -p "输入或粘贴完整密钥文件路径: " key_input
+            if [[ ! -f "$key_input" ]]; then
+                echo "$key_input" > "$KEY_DIR/${name}_sync.key"
+                key_file="$KEY_DIR/${name}_sync.key"
+            else
+                key_file="$key_input"
+            fi
             chmod 600 "$key_file"
             password_or_key="$key_file"
             auth_method="key"
@@ -91,9 +84,6 @@ add_task() {
     echo -e "${GREEN}任务已保存!${RESET}"
 }
 
-# -------------------------
-# 删除任务
-# -------------------------
 delete_task() {
     send_stats "删除同步任务"
     read -e -p "请输入任务编号: " num
@@ -105,16 +95,9 @@ delete_task() {
     echo -e "${GREEN}任务已删除!${RESET}"
 }
 
-# -------------------------
-# 执行同步
-# -------------------------
 run_task() {
+    local direction="$1"  # push 或 pull
     read -e -p "请输入任务编号: " num
-    local direction
-    echo "同步方向: 1)推送 2)拉取"
-    read -e -p "请选择: " dir_choice
-    [[ "$dir_choice" == "2" ]] && direction="pull" || direction="push"
-
     local task=$(sed -n "${num}p" "$CONFIG_FILE")
     [[ -z "$task" ]] && { echo "任务不存在"; return; }
     IFS='|' read -r name local_path remote remote_path port options auth_method password_or_key <<< "$task"
@@ -129,6 +112,7 @@ run_task() {
     fi
 
     local ssh_options="-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     if [[ "$auth_method" == "password" ]]; then
         install sshpass
@@ -142,9 +126,6 @@ run_task() {
     [[ $? -eq 0 ]] && echo -e "${GREEN}同步完成!${RESET}" || echo -e "${RED}同步失败!${RESET}"
 }
 
-# -------------------------
-# 定时任务管理
-# -------------------------
 schedule_task() {
     read -e -p "请输入要定时同步的任务编号: " num
     [[ ! "$num" =~ ^[0-9]+$ ]] && { echo "无效任务编号"; return; }
@@ -160,21 +141,18 @@ schedule_task() {
         *) echo "无效选择"; return ;;
     esac
 
-    local cron_job="$cron_time bash $BASE_DIR/run_task.sh $num"
-    crontab -l 2>/dev/null | grep -v "$BASE_DIR/run_task.sh $num" | { cat; echo "$cron_job"; } | crontab -
+    local cron_job="$cron_time /usr/bin/bash $BASE_DIR/run_task.sh $num >> $LOG_DIR/cron_$num.log 2>&1 # rsync_task_$num"
+    crontab -l 2>/dev/null | grep -v "# rsync_task_$num" | { cat; echo "$cron_job"; } | crontab -
     echo -e "${GREEN}定时任务已创建: $cron_job${RESET}"
 }
 
 delete_task_schedule() {
     read -e -p "请输入要删除的任务编号: " num
     [[ ! "$num" =~ ^[0-9]+$ ]] && { echo "无效任务编号"; return; }
-    crontab -l 2>/dev/null | grep -v "$BASE_DIR/run_task.sh $num" | crontab -
+    crontab -l 2>/dev/null | grep -v "# rsync_task_$num" | crontab -
     echo -e "${GREEN}已删除任务编号 $num 的定时任务${RESET}"
 }
 
-# -------------------------
-# 菜单
-# -------------------------
 rsync_manager() {
     while true; do
         clear
@@ -189,8 +167,8 @@ rsync_manager() {
         case $choice in
             1) add_task ;;
             2) delete_task ;;
-            3) run_task ;;
-            4) run_task ;;
+            3) run_task push ;;
+            4) run_task pull ;;
             5) schedule_task ;;
             6) delete_task_schedule ;;
             0) exit 0 ;;
@@ -200,5 +178,4 @@ rsync_manager() {
     done
 }
 
-# 启动菜单
 rsync_manager
