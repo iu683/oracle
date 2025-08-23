@@ -150,27 +150,19 @@ while true; do
                 send_stats "批量执行任务"
                 echo -e "${GREEN}===== 批量执行任务 =====${RESET}"
                 echo -e "${GREEN}11. 安装IU工具箱${RESET}"
-                echo -e "${GREEN}12. 更新系统${RESET}"
-                echo -e "${GREEN}13. 清理系统${RESET}"
-                echo -e "${GREEN}14. 安装docker${RESET}"
-                echo -e "${GREEN}15. 安装BBR${RESET}"
-                echo -e "${GREEN}16. 安装WAP${RESET}"
-                echo -e "${GREEN}17. 设置上海时区${RESET}"
-                echo -e "${GREEN}18. 开放所有端口${RESET}"
-                echo -e "${GREEN}51. 自定义指令${RESET}"
+                echo -e "${GREEN}12. 清理系统${RESET}"
+                echo -e "${GREEN}13. 设置上海时区${RESET}"
+                echo -e "${GREEN}14. 开放所有端口r${RESET}"          
+                echo -e "${GREEN}50. 自定义指令${RESET}"
                 echo -e "${GREEN}0. 返回上级菜单${RESET}"
                 read -e -p "请选择操作: " task_choice
 
                 case $task_choice in
                     11) run_commands_on_servers "bash <(curl -fsSL https://raw.githubusercontent.com/Polarisiu/vps-toolbox/main/install.sh)" ;;
-                    12) run_commands_on_servers "bash <(curl -sL https://raw.githubusercontent.com/Polarisiu/tool/main/update.sh)" ;;
-                    13) run_commands_on_servers "bash <(curl -sL https://raw.githubusercontent.com/Polarisiu/tool/main/clear.sh)" ;;
-                    14) run_commands_on_servers "bash <(curl -sL https://raw.githubusercontent.com/Polarisiu/app-store/main/Docker.sh)" ;;
-                    15) run_commands_on_servers "wget --no-check-certificate -O tcpx.sh https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcpx.sh && chmod +x tcpx.sh && ./tcpx.sh" ;;
-                    16) run_commands_on_servers "wget https://www.moerats.com/usr/shell/swap.sh && bash swap.sh" ;;
-                    17) run_commands_on_servers "timedatectl set-timezone Asia/Shanghai" ;;
-                    18) run_commands_on_servers "bash <(curl -sL https://raw.githubusercontent.com/Polarisiu/tool/main/open_all_ports.sh)" ;;
-                    51)
+                    12) run_commands_on_servers "bash <(curl -sL https://raw.githubusercontent.com/Polarisiu/tool/main/clear.sh)" ;;
+                    13) run_commands_on_servers "timedatectl set-timezone Asia/Shanghai" ;;
+                    14) run_commands_on_servers "bash <(curl -sL https://raw.githubusercontent.com/Polarisiu/tool/main/open_all_ports.sh)" ;;
+                    50)
                         read -e -p "请输入自定义命令: " cmd
                         run_commands_on_servers "$cmd"
                         ;;
