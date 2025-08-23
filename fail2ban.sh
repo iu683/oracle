@@ -33,7 +33,6 @@ install_fail2ban() {
 
 # 配置 SSH 防护
 configure_ssh() {
-    # 设置日志路径
     if [ -f /etc/debian_version ]; then
         LOG_PATH="/var/log/auth.log"
     elif [ -f /etc/redhat-release ]; then
@@ -114,10 +113,10 @@ fail2ban_menu() {
                     systemctl restart fail2ban
                     sleep 1
                     echo -e "${GREEN}SSH 防暴力破解已关闭${RESET}"
-                    fail2ban-client status sshd
                 else
                     echo -e "${RED}SSH 配置文件不存在，请先安装并开启 SSH 防护${RESET}"
                 fi
+                read -p $'\033[32m按回车返回菜单...\033[0m'
                 ;;
             3)
                 check_fail2ban
@@ -126,23 +125,40 @@ fail2ban_menu() {
                 else
                     echo -e "${RED}SSH 配置文件不存在，请先安装并开启 SSH 防护${RESET}"
                 fi
+                read -p $'\033[32m按回车返回菜单...\033[0m'
                 ;;
             4)
                 check_fail2ban
                 echo -e "${GREEN}当前被封禁的 IP 列表:${RESET}"
-                fail2ban-client status sshd | grep 'Banned IP list'
+                BANNED=$(fail2ban-client status sshd | grep 'Banned IP list' | cut -d: -f2)
+                if [ -z "$BANNED" ]; then
+                    echo -e "${GREEN}无${RESET}"
+                else
+                    echo -e "${GREEN}$BANNED${RESET}"
+                fi
+                echo -e "${GREEN}✅ 状态显示完成${RESET}"
                 read -p $'\033[32m按回车返回菜单...\033[0m'
                 ;;
             5)
                 check_fail2ban
                 echo -e "${GREEN}当前防御规则列表:${RESET}"
-                fail2ban-client status | grep 'Jail list'
+                JAILS=$(fail2ban-client status | grep 'Jail list' | cut -d: -f2)
+                if [ -z "$JAILS" ]; then
+                    echo -e "${GREEN}无${RESET}"
+                else
+                    echo -e "${GREEN}$JAILS${RESET}"
+                fi
+                echo -e "${GREEN}✅ 状态显示完成${RESET}"
                 read -p $'\033[32m按回车返回菜单...\033[0m'
                 ;;
             6)
                 check_fail2ban
                 echo -e "${GREEN}进入日志实时监控，按 Ctrl+C 停止并返回菜单${RESET}"
-                tail -f /var/log/fail2ban.log || true
+                trap 'echo -e "\n${GREEN}已退出日志监控，返回菜单${RESET}"; break' SIGINT
+                while true; do
+                    tail -n 20 -f /var/log/fail2ban.log
+                done
+                trap - SIGINT
                 ;;
             7)
                 uninstall_fail2ban
