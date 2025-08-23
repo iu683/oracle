@@ -1,25 +1,32 @@
 #!/bin/bash
-# 一键安装 / 管理 VPS -> GitHub 上传工具 (命令=G/g)
+# 一键安装 / 管理 VPS -> GitHub 上传工具
+# 路径统一，G/g 可全局运行
 
-UPLOAD_SCRIPT="$HOME/upload_to_github.sh"
-INSTALL_PATH_UPPER="$HOME/bin/G"
-INSTALL_PATH_LOWER="$HOME/bin/g"
-CONFIG_FILE="$HOME/.ghupload_config"
-LOG_FILE="$HOME/.ghupload.log"
+BASE_DIR="$HOME/ghupload"
+UPLOAD_SCRIPT="$BASE_DIR/upload_to_github.sh"
+CONFIG_FILE="$BASE_DIR/.ghupload_config"
+LOG_FILE="$BASE_DIR/github_upload.log"
+SSH_KEY="$BASE_DIR/id_rsa_ghupload"
 SCRIPT_URL="https://raw.githubusercontent.com/iu683/star/main/ghupload.sh"
 
+INSTALL_BIN_DIR="$HOME/bin"
+INSTALL_PATH_UPPER="$INSTALL_BIN_DIR/G"
+INSTALL_PATH_LOWER="$INSTALL_BIN_DIR/g"
+
+mkdir -p "$BASE_DIR" "$INSTALL_BIN_DIR"
+
 # ===============================
-# 写入主脚本 upload_to_github.sh
+# 写入主脚本
 # ===============================
 write_main_script() {
 cat > "$UPLOAD_SCRIPT" <<'EOF'
 #!/bin/bash
-# VPS -> GitHub 上传工具
-
-CONFIG_FILE="$HOME/.ghupload_config"
-LOG_FILE="$HOME/.ghupload.log"
-MAX_LOG_SIZE=10485760   # 10MB
-
+GREEN="\033[32m"
+RESET="\033[0m"
+CONFIG_FILE="$HOME/ghupload/.ghupload_config"
+LOG_FILE="$HOME/ghupload/github_upload.log"
+MAX_LOG_SIZE=10485760
+SSH_KEY="$HOME/ghupload/id_rsa_ghupload"
 TG_BOT_TOKEN=""
 TG_CHAT_ID=""
 
@@ -27,8 +34,7 @@ send_tg() {
     local MSG="$1"
     if [[ -n "$TG_BOT_TOKEN" && -n "$TG_CHAT_ID" ]]; then
         curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
-            -d chat_id="$TG_CHAT_ID" \
-            -d text="$MSG" >/dev/null || echo "⚠️ TG 消息发送失败"
+            -d chat_id="$TG_CHAT_ID" -d text="$MSG" >/dev/null || echo "⚠️ TG 消息发送失败"
     fi
 }
 
@@ -43,45 +49,70 @@ TG_CHAT_ID="$TG_CHAT_ID"
 EOC
 }
 
-load_config() {
-    [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
-}
+load_config() { [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"; }
 
 init_config() {
-    read -p "请输入 GitHub 仓库地址: " REPO_URL
+    if ! git config --global user.name >/dev/null; then
+        read -p "请输入 Git 用户名: " GIT_USER
+        git config --global user.name "$GIT_USER"
+    fi
+    if ! git config --global user.email >/dev/null; then
+        read -p "请输入 Git 邮箱: " GIT_EMAIL
+        git config --global user.email "$GIT_EMAIL"
+    fi
+
+    read -p "请输入 GitHub 仓库地址 (SSH): " REPO_URL
     read -p "请输入分支名称 (默认 main): " BRANCH
     BRANCH=${BRANCH:-main}
     read -p "请输入提交前缀 (默认 VPS-Upload): " COMMIT_PREFIX
     COMMIT_PREFIX=${COMMIT_PREFIX:-VPS-Upload}
+
     while true; do
         read -p "请输入上传目录路径 (绝对路径): " UPLOAD_DIR
         [ -d "$UPLOAD_DIR" ] && break || echo "⚠️ 目录不存在，请重新输入"
     done
+
+    if [ ! -f "$SSH_KEY" ]; then
+        echo "⚙️ 正在生成 SSH 密钥..."
+        ssh-keygen -t rsa -b 4096 -f "$SSH_KEY" -N "" -C "ghupload@VPS"
+        echo "✅ SSH 密钥生成完成"
+    fi
+    echo "请将以下公钥添加到 GitHub 仓库的 SSH Keys 中:"
+    cat "${SSH_KEY}.pub"
+    echo "------------------------------------"
+
     read -p "是否配置 Telegram Bot 通知？(y/n): " TG_CHOICE
     if [[ "$TG_CHOICE" == "y" ]]; then
         read -p "请输入 TG Bot Token: " TG_BOT_TOKEN
         read -p "请输入 TG Chat ID: " TG_CHAT_ID
     fi
+
     save_config
     echo "✅ 配置已保存"
+    upload_files  # 初始化完成后自动上传一次
+}
+
+change_repo() {
+    load_config
+    read -p "请输入新的 GitHub 仓库地址 (SSH): " NEW_REPO
+    REPO_URL="$NEW_REPO"
+    save_config
+    echo "✅ 仓库地址已更新为: $REPO_URL"
 }
 
 upload_files() {
     load_config
-
-    # 日志清理
     [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE") -ge $MAX_LOG_SIZE ] && echo "[`date '+%Y-%m-%d %H:%M:%S'`] --- 日志清理 ---" > "$LOG_FILE"
 
-    # 临时目录
     TMP_DIR=$(mktemp -d)
-    git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >>"$LOG_FILE" 2>&1 || {
+    GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no" \
+        git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >>"$LOG_FILE" 2>&1 || {
         echo "❌ Git clone 失败" | tee -a "$LOG_FILE"
         send_tg "❌ VPS 上传失败：无法 clone 仓库"
         rm -rf "$TMP_DIR"
         exit 1
     }
 
-    # 检查上传目录是否为空
     if [ -z "$(ls -A "$UPLOAD_DIR")" ]; then
         echo "⚠️ 上传目录为空" | tee -a "$LOG_FILE"
         rm -rf "$TMP_DIR"
@@ -144,8 +175,8 @@ show_log() {
 
 update_tool() {
     echo "⚙️ 正在从 GitHub 拉取最新版本..."
-    if curl -fsSL "$SCRIPT_URL" -o "$HOME/ghupload.sh"; then
-        chmod +x "$HOME/ghupload.sh"
+    if curl -fsSL "https://raw.githubusercontent.com/iu683/star/main/ghupload.sh" -o "$BASE_DIR/ghupload.sh"; then
+        chmod +x "$BASE_DIR/ghupload.sh"
         echo "✅ 已更新到最新版本！请重新运行 G/g"
         exit 0
     else
@@ -155,23 +186,24 @@ update_tool() {
 
 uninstall_tool() {
     echo "⚠️ 正在卸载..."
-    rm -f "$UPLOAD_SCRIPT" "$HOME/bin/G" "$HOME/bin/g"
-    rm -f "$CONFIG_FILE" "$LOG_FILE"
+    rm -f "$UPLOAD_SCRIPT" "$INSTALL_BIN_DIR/G" "$INSTALL_BIN_DIR/g"
+    rm -f "$CONFIG_FILE" "$LOG_FILE" "$SSH_KEY" "$SSH_KEY.pub"
     crontab -l 2>/dev/null | grep -v "upload_to_github.sh upload" | crontab -
     echo "✅ 卸载完成！"
 }
 
 menu() {
-    echo "=============================="
-    echo " VPS -> GitHub 上传工具 "
-    echo "=============================="
-    echo "1) 初始化配置"
-    echo "2) 手动上传文件"
-    echo "3) 设置定时任务"
-    echo "4) 查看最近日志"
-    echo "5) 更新脚本"
-    echo "6) 卸载脚本"
-    echo "0) 退出"
+    echo -e "${GREEN}==============================${RESET}"
+    echo -e "${GREEN} VPS -> GitHub 上传工具 ${RESET}"
+    echo -e "${GREEN}==============================${RESET}"
+    echo -e "${GREEN}1) 初始化配置${RESET}"
+    echo -e "${GREEN}2) 手动上传文件${RESET}"
+    echo -e "${GREEN}3) 设置定时任务${RESET}"
+    echo -e "${GREEN}4) 查看最近日志${RESET}"
+    echo -e "${GREEN}5) 更新脚本${RESET}"
+    echo -e "${GREEN}6) 卸载脚本${RESET}"
+    echo -e "${GREEN}7) 修改仓库地址${RESET}"
+    echo -e "${GREEN}0) 退出${RESET}"
     read -p "请输入选项: " opt
     case $opt in
         1) init_config ;;
@@ -180,6 +212,7 @@ menu() {
         4) show_log ;;
         5) update_tool ;;
         6) uninstall_tool ;;
+        7) change_repo ;;
         0) exit 0 ;;
         *) echo "无效选项" ;;
     esac
@@ -198,11 +231,7 @@ chmod +x "$UPLOAD_SCRIPT"
 # 安装函数
 # ===============================
 install_tool() {
-    # 创建 bin 目录
-    mkdir -p "$HOME/bin"
-
-    # 检查依赖
-    for cmd in git curl; do
+    for cmd in git curl ssh; do
         command -v $cmd >/dev/null 2>&1 || { echo "❌ 请先安装 $cmd"; exit 1; }
     done
 
@@ -216,8 +245,16 @@ bash "$UPLOAD_SCRIPT" "\$@"
 EOF
         chmod +x "$path"
     }
+
     make_launcher "$INSTALL_PATH_UPPER"
     make_launcher "$INSTALL_PATH_LOWER"
+
+    # 自动加入 PATH
+    if ! echo "$PATH" | grep -q "$INSTALL_BIN_DIR"; then
+        echo "export PATH=\$PATH:$INSTALL_BIN_DIR" >> "$HOME/.bashrc"
+        export PATH=$PATH:$INSTALL_BIN_DIR
+        echo "✅ 已将 $INSTALL_BIN_DIR 添加到 PATH，请重新打开终端以生效"
+    fi
 
     echo "✅ 安装完成！现在可以用 G 或 g 运行"
 }
