@@ -1,5 +1,5 @@
 #!/bin/bash
-# VPS -> GitHub HTTPS 上传工具 (Token) 安装脚本（支持权限卸载）
+# VPS -> GitHub 上传工具 (SSH 优先 + 自动推送公钥)
 
 BASE_DIR="$HOME/ghupload"
 UPLOAD_SCRIPT="$BASE_DIR/upload_to_github.sh"
@@ -53,13 +53,42 @@ EOC
 
 load_config() { [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"; }
 
+generate_ssh_key() {
+    if [ ! -f "$HOME/.ssh/id_rsa" ]; then
+        ssh-keygen -t rsa -b 4096 -N "" -f "$HOME/.ssh/id_rsa"
+        echo "✅ SSH Key 已生成"
+    else
+        echo "ℹ️ SSH Key 已存在"
+    fi
+
+    PUB_KEY_CONTENT=$(cat "$HOME/.ssh/id_rsa.pub")
+    read -p "请输入 GitHub 用户名: " GH_USER
+    read -s -p "请输入 GitHub Personal Access Token (需 admin:public_key 权限): " GH_TOKEN
+    echo ""
+    TITLE="VPS_$(date '+%Y%m%d%H%M%S')"
+
+    RESP=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: token $GH_TOKEN" \
+        -d "{\"title\":\"$TITLE\",\"key\":\"$PUB_KEY_CONTENT\"}" \
+        https://api.github.com/user/keys)
+
+    if [ "$RESP" -eq 201 ]; then
+        echo "✅ SSH Key 已成功添加到 GitHub，Title: $TITLE"
+    elif [ "$RESP" -eq 422 ]; then
+        echo "⚠️ 公钥已存在，跳过添加"
+    else
+        echo "❌ 添加公钥失败，请检查用户名和 Token 权限"
+    fi
+}
+
 init_config() {
+    generate_ssh_key
+
     while true; do
-        read -p "请输入 GitHub 仓库地址 (HTTPS + Token, 例如 https://USERNAME:TOKEN@github.com/USER/REPO.git): " REPO_URL
+        read -p "请输入 GitHub 仓库地址 (SSH, 例如 git@github.com:USER/REPO.git): " REPO_URL
         read -p "请输入分支名称 (默认 main): " BRANCH
         BRANCH=${BRANCH:-main}
         TMP_DIR=$(mktemp -d)
-        git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1 && rm -rf "$TMP_DIR" && break || echo "❌ 仓库无法访问或 Token 错误，请重新输入"
+        git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR" >/dev/null 2>&1 && rm -rf "$TMP_DIR" && break || echo "❌ 仓库无法访问，请确认 SSH Key 已添加到 GitHub"
     done
 
     read -p "请输入提交前缀 (默认 VPS-Upload): " COMMIT_PREFIX
@@ -84,9 +113,9 @@ init_config() {
 change_repo() {
     load_config
     while true; do
-        read -p "请输入新的 GitHub 仓库地址 (HTTPS + Token): " NEW_REPO
+        read -p "请输入新的 GitHub 仓库地址 (SSH): " NEW_REPO
         TMP_DIR=$(mktemp -d)
-        git clone -b "$BRANCH" "$NEW_REPO" "$TMP_DIR" >/dev/null 2>&1 && rm -rf "$TMP_DIR" && break || echo "❌ 仓库无法访问，请重新输入"
+        git clone -b "$BRANCH" "$NEW_REPO" "$TMP_DIR" >/dev/null 2>&1 && rm -rf "$TMP_DIR" && break || echo "❌ 仓库无法访问，请确认 SSH Key 已添加到 GitHub"
     done
     REPO_URL="$NEW_REPO"
     save_config
