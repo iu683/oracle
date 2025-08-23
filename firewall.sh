@@ -14,19 +14,16 @@ RESET="\033[0m"
 # 工具函数
 # ===============================
 
-# 获取 SSH 端口
 get_ssh_port() {
     PORT=$(grep -E '^ *Port ' /etc/ssh/sshd_config | awk '{print $2}' | head -n 1)
     [[ -z "$PORT" || ! "$PORT" =~ ^[0-9]+$ ]] && PORT=22
     echo "$PORT"
 }
 
-# 保存规则
 save_rules() {
     netfilter-persistent save 2>/dev/null || true
 }
 
-# 初始化默认规则
 init_rules() {
     SSH_PORT=$(get_ssh_port)
     for proto in iptables ip6tables; do
@@ -49,12 +46,10 @@ init_rules() {
     systemctl enable netfilter-persistent 2>/dev/null || true
 }
 
-# 检查防火墙安装
 check_installed() {
     dpkg -l | grep -q iptables-persistent
 }
 
-# 安装防火墙
 install_firewall() {
     echo -e "${YELLOW}正在安装防火墙，请稍候...${RESET}"
     apt update -y
@@ -65,7 +60,6 @@ install_firewall() {
     read -p "按回车继续..."
 }
 
-# 清空防火墙规则
 clear_firewall() {
     echo -e "${YELLOW}正在清空防火墙规则并放行所有流量...${RESET}"
     for proto in iptables ip6tables; do
@@ -81,17 +75,15 @@ clear_firewall() {
     read -p "按回车继续..."
 }
 
-# 恢复默认规则
 restore_default_rules() {
     echo -e "${YELLOW}正在恢复默认防火墙规则 (仅放行 SSH/80/443)...${RESET}"
     SSH_PORT=$(get_ssh_port)
     echo -e "${GREEN}检测到 SSH 端口: $SSH_PORT${RESET}"
     init_rules
-    echo -e "${GREEN}✅ 默认规则已恢复: 仅允许 SSH/80/443，其余拒绝${RESET}"
+    echo -e "${GREEN}✅ 默认规则已恢复${RESET}"
     read -p "按回车继续..."
 }
 
-# 一键放行 Web 端口
 open_web_ports() {
     SSH_PORT=$(get_ssh_port)
     echo -e "${YELLOW}正在一键放行 SSH/80/443...${RESET}"
@@ -105,7 +97,6 @@ open_web_ports() {
     read -p "按回车继续..."
 }
 
-# IP 操作
 ip_action() {
     local action=$1 ip=$2
     for proto in iptables ip6tables; do
@@ -128,7 +119,6 @@ ip_action() {
     done
 }
 
-# PING 操作
 ping_action() {
     local action=$1
     for proto in iptables ip6tables; do
@@ -149,21 +139,23 @@ ping_action() {
     done
 }
 
-# 安装并生成 GeoIP 数据
+# -----------------------------
+# 国内镜像下载 GeoIP
+# -----------------------------
 install_geoip() {
     mkdir -p /usr/share/xt_geoip
     cd /usr/share/xt_geoip || return
-    echo -e "${YELLOW}正在下载 GeoIP 数据，请稍候...${RESET}"
-    curl -O https://geolite.maxmind.com/download/geoip/database/GeoLite2-Country-CSV.zip
+    echo -e "${YELLOW}正在下载 GeoIP 数据（国内镜像）请稍候...${RESET}"
+    curl -L -O https://github.com/apnic/geoip/raw/master/GeoLite2-Country-CSV.zip
     unzip -o GeoLite2-Country-CSV.zip
     mkdir -p /usr/share/xt_geoip/build
     for csv in $(find . -name "*-Blocks-IPv4.csv" -o -name "*-Blocks-IPv6.csv"); do
         csv2bin "$csv" /usr/share/xt_geoip/build
     done
     echo -e "${GREEN}✅ GeoIP 数据下载并生成完成${RESET}"
+    read -p "按回车继续..."
 }
 
-# 国家规则
 manage_country_rules() {
     local action=$1
     local country=$2
@@ -212,6 +204,7 @@ menu() {
         echo -e "${GREEN}14. 允许国家 IP${RESET}"
         echo -e "${GREEN}15. 清除国家 IP${RESET}"
         echo -e "${GREEN}16. 一键放行常用 Web 端口 (SSH/80/443)${RESET}"
+        echo -e "${GREEN}17. 显示防火墙状态及已放行端口${RESET}"
         echo -e "${GREEN}0. 退出${RESET}"
         echo -e "${GREEN}============================${RESET}"
         read -p "请输入选择: " choice
@@ -265,50 +258,63 @@ menu() {
                 read -p "按回车继续..."
                 ;;
             8)
-                echo -e "${YELLOW}IPv4规则:${RESET}"; iptables -L -n --line-numbers
-                echo -e "${YELLOW}IPv6规则:${RESET}"; ip6tables -L -n --line-numbers
+                echo "iptables IPv4:"
+                iptables -L -n --line-numbers
+                echo "iptables IPv6:"
+                ip6tables -L -n --line-numbers
                 read -p "按回车继续..."
                 ;;
             9) clear_firewall ;;
             10) restore_default_rules ;;
-            11) ping_action allow; save_rules; echo -e "${GREEN}✅ 已允许 PING${RESET}"; read -p "按回车继续..." ;;
-            12) ping_action deny; save_rules; echo -e "${GREEN}✅ 已禁用 PING${RESET}"; read -p "按回车继续..." ;;
+            11) ping_action allow ;;
+            12) ping_action deny ;;
             13)
-                read -e -p "请输入阻止的国家代码: " country_code
-                manage_country_rules block "$country_code"; save_rules
-                echo -e "${GREEN}✅ 已阻止国家 $country_code 的 IP${RESET}"
+                read -e -p "请输入阻止的国家代码（如 CN, US, JP）: " CC
+                manage_country_rules block "$CC"
+                save_rules
+                echo -e "${GREEN}✅ 已阻止国家 $CC 的 IP${RESET}"
                 read -p "按回车继续..."
                 ;;
             14)
-                read -e -p "请输入允许的国家代码: " country_code
-                manage_country_rules allow "$country_code"; save_rules
-                echo -e "${GREEN}✅ 已允许国家 $country_code 的 IP${RESET}"
+                read -e -p "请输入允许的国家代码（如 CN, US, JP）: " CC
+                manage_country_rules allow "$CC"
+                save_rules
+                echo -e "${GREEN}✅ 已允许国家 $CC 的 IP${RESET}"
                 read -p "按回车继续..."
                 ;;
             15)
-                read -e -p "请输入清除的国家代码: " country_code
-                manage_country_rules unblock "$country_code"; save_rules
-                echo -e "${GREEN}✅ 已清除国家 $country_code 的 IP${RESET}"
+                read -e -p "请输入清除的国家代码（如 CN, US, JP）: " CC
+                manage_country_rules unblock "$CC"
+                save_rules
+                echo -e "${GREEN}✅ 已清除国家 $CC 的 IP 规则${RESET}"
                 read -p "按回车继续..."
                 ;;
             16) open_web_ports ;;
-            0) exit 0 ;;
-            *) echo -e "${RED}❌ 无效输入，请重新选择${RESET}"; read -p "按回车继续..." ;;
+            17)
+                echo -e "${YELLOW}当前防火墙状态:${RESET}"
+                echo "iptables IPv4:"
+                iptables -L -n -v --line-numbers
+                echo "iptables IPv6:"
+                ip6tables -L -n -v --line-numbers
+                echo -e "${YELLOW}已放行端口列表:${RESET}"
+                echo "TCP:"
+                iptables -L INPUT -n | grep ACCEPT | grep tcp
+                echo "UDP:"
+                iptables -L INPUT -n | grep ACCEPT | grep udp
+                read -p "按回车继续..."
+                ;;
+            0) break ;;
+            *) echo -e "${RED}无效选择${RESET}"; read -p "按回车继续..." ;;
         esac
     done
 }
 
 # ===============================
-# 主逻辑
+# 脚本入口
 # ===============================
 if ! check_installed; then
-    echo -e "${YELLOW}⚠️ 防火墙未安装，是否现在安装？(Y/N)${RESET}"
-    read -p "选择: " choice
-    case "$choice" in
-        [Yy]) install_firewall; install_geoip; menu ;;
-        [Nn]) echo "已取消"; exit 0 ;;
-        *) echo -e "${RED}❌ 无效选择${RESET}"; exit 1 ;;
-    esac
-else
-    menu
+    install_firewall
+    install_geoip
 fi
+
+menu
