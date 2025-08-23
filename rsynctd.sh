@@ -211,5 +211,4 @@ menu() {
 if [[ "$1" == "push" || "$1" == "pull" ]]; then
     run_task "$1" "$2"
 else
-    menu
-fi
+menu
