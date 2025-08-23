@@ -43,13 +43,13 @@ configure_ssh() {
         exit 1
     fi
 
-    read -p "$(echo -e ${GREEN}请输入 SSH 端口（默认22）: ${RESET})" SSH_PORT
+    read -p $'\033[32m请输入 SSH 端口（默认22）: \033[0m' SSH_PORT
     SSH_PORT=${SSH_PORT:-22}
 
-    read -p "$(echo -e ${GREEN}请输入最大失败尝试次数 maxretry（默认5）: ${RESET})" MAX_RETRY
+    read -p $'\033[32m请输入最大失败尝试次数 maxretry（默认5）: \033[0m' MAX_RETRY
     MAX_RETRY=${MAX_RETRY:-5}
 
-    read -p "$(echo -e ${GREEN}请输入封禁时间 bantime(秒，默认600) : ${RESET})" BAN_TIME
+    read -p $'\033[32m请输入封禁时间 bantime(秒，默认600) : \033[0m' BAN_TIME
     BAN_TIME=${BAN_TIME:-600}
 
     mkdir -p /etc/fail2ban/jail.d
@@ -96,7 +96,7 @@ fail2ban_menu() {
         echo -e "${GREEN}0. 退出${RESET}"
         echo -e "${GREEN}------------------------${RESET}"
 
-        read -p "$(echo -e ${GREEN}请输入你的选择: ${RESET})" sub_choice
+        read -p $'\033[32m请输入你的选择: \033[0m' sub_choice
 
         case $sub_choice in
             1)
