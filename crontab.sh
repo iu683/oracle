@@ -101,21 +101,56 @@ add_cron_task() {
     echo -e "${GREEN}任务添加成功！${RESET}"
 }
 
-# 删除任务
+# 删除任务（显示序号选择）
 delete_cron_task() {
-    read -e -p "请输入需要删除任务的关键字: " kquest
-    echo -e "${GREEN}以下任务将被删除：${RESET}"
-    crontab -l | grep "$kquest" || { echo -e "${GREEN}未找到匹配任务${RESET}"; return; }
-    read -p "确认删除吗? (y/n): " yn
-    if [[ $yn == "y" ]]; then
-        crontab -l | grep -v "$kquest" | crontab -
-        send_stats "删除定时任务"
-        echo -e "${GREEN}删除完成！${RESET}"
+    mapfile -t tasks < <(crontab -l 2>/dev/null)
+    if [ ${#tasks[@]} -eq 0 ]; then
+        echo -e "${GREEN}当前没有定时任务${RESET}"
+        return
     fi
+
+    echo -e "${GREEN}当前定时任务列表:${RESET}"
+    for i in "${!tasks[@]}"; do
+        printf "${GREEN}%d) %s${RESET}\n" "$((i+1))" "${tasks[$i]}"
+    done
+
+    read -e -p "请输入要删除的任务序号（多个用空格分隔）: " indices
+    for idx in $indices; do
+        validate_number "$idx" 1 "${#tasks[@]}" "序号" || continue
+        tasks[$((idx-1))]=''
+    done
+
+    # 更新 crontab
+    printf "%s\n" "${tasks[@]}" | sed '/^$/d' | crontab -
+    send_stats "删除定时任务"
+    echo -e "${GREEN}删除完成！${RESET}"
 }
 
 # 编辑任务
 edit_cron_task() {
+    # 自动选择编辑器
+    if command -v nano &>/dev/null; then
+        export EDITOR=nano
+    elif command -v vim &>/dev/null; then
+        export EDITOR=vim
+    elif command -v vi &>/dev/null; then
+        export EDITOR=vi
+    else
+        echo -e "${RED}未安装 nano/vim/vi，正在安装 nano...${RESET}"
+        if [[ -f /etc/debian_version ]]; then
+            apt update && apt install -y nano
+        elif [[ -f /etc/redhat-release ]]; then
+            yum install -y nano
+        elif [[ -f /etc/alpine-release ]]; then
+            apk add --no-cache nano
+        else
+            echo -e "${RED}无法识别系统类型，请手动安装编辑器${RESET}"
+            return
+        fi
+        export EDITOR=nano
+        echo -e "${GREEN}nano 安装完成，已设置为默认编辑器${RESET}"
+    fi
+
     crontab -e
     send_stats "编辑定时任务"
 }
@@ -134,7 +169,7 @@ cron_menu() {
         echo -e "${GREEN}操作:${RESET}"
         echo -e "${GREEN}------------------------${RESET}"
         echo -e "${GREEN}1. 添加定时任务${RESET}"
-        echo -e "${GREEN}2. 删除定时任务${RESET}"
+        echo -e "${GREEN}2. 删除定时任务（按序号选择）${RESET}"
         echo -e "${GREEN}3. 编辑定时任务${RESET}"
         echo -e "${GREEN}0. 退出脚本${RESET}"
         echo -e "${GREEN}------------------------${RESET}"
@@ -153,5 +188,5 @@ cron_menu() {
     done
 }
 
-# 启动直接进入定时任务管理
+# 启动脚本直接进入定时任务管理
 cron_menu
