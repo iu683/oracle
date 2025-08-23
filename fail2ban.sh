@@ -153,12 +153,8 @@ fail2ban_menu() {
                 ;;
             6)
                 check_fail2ban
-                echo -e "${GREEN}进入日志实时监控，按 Ctrl+C 停止并返回菜单${RESET}"
-                trap 'echo -e "\n${GREEN}已退出日志监控，返回菜单${RESET}"; break' SIGINT
-                while true; do
-                    tail -n 20 -f /var/log/fail2ban.log
-                done
-                trap - SIGINT
+                echo -e "${GREEN}进入日志实时监控，按 q 或 Ctrl+C 停止并返回菜单${RESET}"
+                less +F /var/log/fail2ban.log
                 ;;
             7)
                 uninstall_fail2ban
