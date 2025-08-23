@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==========================================
-# Rsync 一键菜单管理脚本（重写版）
-# 支持 push/pull/all、定时任务、密码/密钥认证、日志管理
+# Rsync 一键菜单管理脚本（纯菜单版）
+# 支持密码/密钥认证、定时任务、日志管理
 # 菜单字体绿色
 # ==========================================
 
@@ -104,11 +104,17 @@ delete_task() {
     echo -e "${GREEN}任务已删除!${RESET}"
 }
 
-run_single_task() {
-    local direction="$1" num="$2"
+run_task() {
+    read -e -p "请输入要执行的任务编号: " num
+    local direction
+    echo "同步方向: 1)推送 2)拉取"
+    read -e -p "请选择: " dir_choice
+    [[ "$dir_choice" == "2" ]] && direction="pull" || direction="push"
+
     local task=$(sed -n "${num}p" "$CONFIG_FILE")
     [[ -z "$task" ]] && { echo "任务不存在"; return; }
     IFS='|' read -r name local_path remote remote_path port options auth_method password_or_key <<< "$task"
+
     local source destination
     if [[ "$direction" == "pull" ]]; then
         source="$remote:$remote_path"
@@ -117,9 +123,11 @@ run_single_task() {
         source="$local_path"
         destination="$remote:$remote_path"
     fi
+
     cleanup_logs
     local ssh_options="-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     local log_file="$LOG_DIR/${name}_$(date +%Y%m%d%H%M%S).log"
+
     if [[ "$auth_method" == "password" ]]; then
         install sshpass
         sshpass -p "$password_or_key" rsync $options -e "ssh $ssh_options" "$source" "$destination" &> "$log_file"
@@ -128,24 +136,11 @@ run_single_task() {
         [[ "$(stat -c %a "$password_or_key")" != "600" ]] && chmod 600 "$password_or_key"
         rsync $options -e "ssh -i $password_or_key $ssh_options" "$source" "$destination" &> "$log_file"
     fi
+
     if [[ $? -eq 0 ]]; then
         echo -e "${GREEN}同步完成! 日志: $log_file${RESET}"
     else
         echo -e "${RED}同步失败! 日志: $log_file${RESET}"
-    fi
-}
-
-run_task() {
-    local direction="$1" target="$2"
-    [[ "$1" == "push" || "$1" == "pull" ]] && target="$2"
-    [[ -z "$target" ]] && read -e -p "请输入任务编号或 all: " target
-    if [[ "$target" == "all" ]]; then
-        local total=$(wc -l < "$CONFIG_FILE")
-        for num in $(seq 1 $total); do
-            run_single_task "$direction" "$num"
-        done
-    else
-        run_single_task "$direction" "$target"
     fi
 }
 
@@ -155,11 +150,11 @@ run_task() {
 schedule_task() {
     read -e -p "任务编号: " num
     [[ ! "$num" =~ ^[0-9]+$ ]] && echo "无效编号" && return
-    echo "方向: 1)push 2)pull"
+    echo "同步方向: 1)推送 2)拉取"
     read -e -p "选择: " dir_choice
     local direction="push"
     [[ "$dir_choice" == "2" ]] && direction="pull"
-    echo "间隔: 1)每小时 2)每天 3)每周"
+    echo "执行间隔: 1)每小时 2)每天 3)每周"
     read -e -p "选择: " interval
     local minute=$(shuf -i 0-59 -n 1)
     local cron_time=""
@@ -170,7 +165,7 @@ schedule_task() {
         *) echo "无效"; return ;;
     esac
     local log_file="$LOG_DIR/cron_${num}_$(date +%Y%m%d%H%M%S).log"
-    local cron_job="$cron_time $HOME/$(basename $0) $direction $num >> $log_file 2>&1"
+    local cron_job="$cron_time $HOME/$(basename $0) execute $direction $num >> $log_file 2>&1"
     (crontab -l 2>/dev/null; echo "$cron_job") | crontab -
     echo -e "${GREEN}定时任务创建: $cron_job${RESET}"
 }
@@ -204,8 +199,8 @@ menu() {
         case $choice in
             1) add_task ;;
             2) delete_task ;;
-            3) run_task push ;;
-            4) run_task pull ;;
+            3) run_task ;;
+            4) run_task ;;
             5) schedule_task ;;
             6) delete_task_schedule ;;
             0) exit 0 ;;
@@ -216,10 +211,6 @@ menu() {
 }
 
 # -------------------------
-# 启动逻辑
+# 启动菜单
 # -------------------------
-if [[ "$1" == "push" || "$1" == "pull" ]]; then
-    run_task "$1" "$2"
-else
-    menu
-fi
+menu
