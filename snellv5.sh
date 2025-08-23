@@ -41,12 +41,19 @@ install_snell() {
     mkdir -p $SNELL_DIR
     cd $SNELL_DIR
 
-    # 下载 Snell 最新版本
-    LATEST=$(curl -s https://api.github.com/repos/icpz/snell-server/releases/latest | grep browser_download_url | grep linux-amd64 | cut -d '"' -f 4)
-    wget -O snell.tar.gz "$LATEST"
-    tar -xzf snell.tar.gz
-    rm -f snell.tar.gz
-    chmod +x snell-server
+    # 下载 Snell 官方稳定版本
+    ARCH=$(uname -m)
+    VERSION="v5.0.0"
+    if [[ "$ARCH" == "aarch64" ]]; then
+        SNELL_URL="https://dl.nssurge.com/snell/snell-server-${VERSION}-linux-aarch64.zip"
+    else
+        SNELL_URL="https://dl.nssurge.com/snell/snell-server-${VERSION}-linux-amd64.zip"
+    fi
+
+    wget -O snell.zip "$SNELL_URL"
+    unzip -o snell.zip -d $SNELL_DIR
+    rm -f snell.zip
+    chmod +x $SNELL_DIR/snell-server
 
     # 写入配置
     configure_snell
@@ -93,11 +100,18 @@ update_snell() {
     systemctl stop snell || true
 
     cd $SNELL_DIR
-    LATEST=$(curl -s https://api.github.com/repos/icpz/snell-server/releases/latest | grep browser_download_url | grep linux-amd64 | cut -d '"' -f 4)
-    wget -O snell.tar.gz "$LATEST"
-    tar -xzf snell.tar.gz
-    rm -f snell.tar.gz
-    chmod +x snell-server
+    ARCH=$(uname -m)
+    VERSION="v5.0.0"
+    if [[ "$ARCH" == "aarch64" ]]; then
+        SNELL_URL="https://dl.nssurge.com/snell/snell-server-${VERSION}-linux-aarch64.zip"
+    else
+        SNELL_URL="https://dl.nssurge.com/snell/snell-server-${VERSION}-linux-amd64.zip"
+    fi
+
+    wget -O snell.zip "$SNELL_URL"
+    unzip -o snell.zip -d $SNELL_DIR
+    rm -f snell.zip
+    chmod +x $SNELL_DIR/snell-server
 
     systemctl start snell
     echo -e "${GREEN}[完成] Snell 已更新${RESET}"
@@ -105,7 +119,7 @@ update_snell() {
 
 # ================== Snell 配置 ==================
 configure_snell() {
-    echo -e "${GREEN}[信息] 开始设置 Snell 配置...${RESET}"
+    echo -e "${GREEN}[信息] 配置 Snell...${RESET}"
 
     # 端口
     read -p "请输入 Snell Server 端口[1-65535] (默认: 2345): " port
@@ -146,9 +160,7 @@ configure_snell() {
 
     # DNS
     default_dns=$(get_system_dns)
-    if [ -z "$default_dns" ]; then
-        default_dns="1.1.1.1,8.8.8.8"
-    fi
+    [[ -z "$default_dns" ]] && default_dns="1.1.1.1,8.8.8.8"
     read -p "请输入 DNS (默认: $default_dns): " dns
     dns=${dns:-$default_dns}
     echo -e "${GREEN}当前 DNS: $dns${RESET}"
@@ -162,6 +174,13 @@ obfs = $obfs
 ipv6 = $ipv6
 tfo = $tfo
 dns = $dns
+EOF
+
+    # 写入 config.txt 示例
+    HOST_IP=$(curl -s https://api64.ipify.org || curl -s https://ifconfig.me || curl -s https://ipinfo.io/ip)
+    IP_COUNTRY=$(curl -s http://ipinfo.io/${HOST_IP}/country)
+    cat << EOF > $SNELL_DIR/config.txt
+${IP_COUNTRY} = snell, ${HOST_IP}, ${port}, psk = ${key}, version = 5, reuse = true
 EOF
 
     echo -e "${GREEN}[完成] 配置已写入 $SNELL_CONFIG${RESET}"
@@ -183,6 +202,7 @@ show_menu() {
     echo -e "${GREEN}============================${RESET}"
 }
 
+# ================== 主循环 ==================
 while true; do
     show_menu
     read -p "请输入选项: " choice
