@@ -54,7 +54,6 @@ EOC
 load_config() { [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"; }
 
 generate_ssh_key() {
-    # 生成 SSH Key
     if [ ! -f "$HOME/.ssh/id_rsa" ]; then
         ssh-keygen -t rsa -b 4096 -N "" -f "$HOME/.ssh/id_rsa"
         echo "✅ SSH Key 已生成"
@@ -62,15 +61,11 @@ generate_ssh_key() {
         echo "ℹ️ SSH Key 已存在"
     fi
 
-    # 启动 ssh-agent 并添加 Key
     eval "$(ssh-agent -s)"
     ssh-add ~/.ssh/id_rsa
-
-    # 信任 GitHub 主机，避免第一次 clone 阻塞
     mkdir -p ~/.ssh
     ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
 
-    # 推送公钥到 GitHub
     PUB_KEY_CONTENT=$(cat "$HOME/.ssh/id_rsa.pub")
     read -p "请输入 GitHub 用户名: " GH_USER
     read -s -p "请输入 GitHub Personal Access Token (需 admin:public_key 权限): " GH_TOKEN
@@ -91,7 +86,6 @@ generate_ssh_key() {
 init_config() {
     generate_ssh_key
 
-    # 循环验证仓库访问
     while true; do
         read -p "请输入 GitHub 仓库地址 (SSH, 例如 git@github.com:USER/REPO.git): " REPO_URL
         read -p "请输入分支名称 (默认 main): " BRANCH
@@ -144,16 +138,20 @@ change_repo() {
 
 upload_files() {
     load_config
+    if [ -z "$UPLOAD_DIR" ] || [ ! -d "$UPLOAD_DIR" ]; then
+        echo "❌ 上传目录未配置或不存在，请先初始化配置" | tee -a "$LOG_FILE"
+        exit 1
+    fi
+
+    if [ -z "$(ls -A "$UPLOAD_DIR")" ]; then
+        echo "⚠️ 上传目录为空" | tee -a "$LOG_FILE"
+        exit 1
+    fi
+
     [ -f "$LOG_FILE" ] && [ $(stat -c%s "$LOG_FILE") -ge $MAX_LOG_SIZE ] && echo "[`date '+%Y-%m-%d %H:%M:%S'`] --- 日志清理 ---" > "$LOG_FILE"
 
     TMP_DIR=$(mktemp -d)
     git clone -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >>"$LOG_FILE" 2>&1 || { echo "❌ Git clone 失败" | tee -a "$LOG_FILE"; send_tg "❌ VPS 上传失败：无法 clone 仓库"; rm -rf "$TMP_DIR"; exit 1; }
-
-    if [ -z "$(ls -A "$UPLOAD_DIR")" ]; then
-        echo "⚠️ 上传目录为空" | tee -a "$LOG_FILE"
-        rm -rf "$TMP_DIR"
-        exit 1
-    fi
 
     cp -r "$UPLOAD_DIR"/* "$TMP_DIR/repo/"
     cd "$TMP_DIR/repo" || exit 1
@@ -161,13 +159,21 @@ upload_files() {
 
     if git diff-index --quiet HEAD --; then
         echo "ℹ️ 没有文件改动，无需提交" | tee -a "$LOG_FILE"
+        send_tg "ℹ️ VPS 上传：没有文件改动"
         rm -rf "$TMP_DIR"
         exit 0
     fi
 
     COMMIT_MSG="$COMMIT_PREFIX $(date '+%Y-%m-%d %H:%M:%S')"
     git commit -m "$COMMIT_MSG" >>"$LOG_FILE" 2>&1
-    git push origin "$BRANCH" >>"$LOG_FILE" 2>&1 && { echo "✅ 上传成功: $COMMIT_MSG" | tee -a "$LOG_FILE"; send_tg "✅ VPS 上传成功：$COMMIT_MSG"; } || { echo "❌ 上传失败" | tee -a "$LOG_FILE"; send_tg "❌ VPS 上传失败：git push 出错"; }
+
+    if git push origin "$BRANCH" >>"$LOG_FILE" 2>&1; then
+        echo "✅ 上传成功: $COMMIT_MSG" | tee -a "$LOG_FILE"
+        send_tg "✅ VPS 上传成功：$COMMIT_MSG"
+    else
+        echo "❌ 上传失败" | tee -a "$LOG_FILE"
+        send_tg "❌ VPS 上传失败：git push 出错"
+    fi
 
     rm -rf "$TMP_DIR"
 }
@@ -175,13 +181,13 @@ upload_files() {
 set_cron() {
     load_config
     echo "请选择定时任务："
-    echo "1) 每 5 分钟一次"
-    echo "2) 每 10 分钟一次"
-    echo "3) 每 30 分钟一次"
-    echo "4) 每小时一次"
-    echo "5) 每天凌晨 3 点"
-    echo "6) 每周一凌晨 0 点"
-    echo "7) 自定义"
+    echo -e "${GREEN}1) 每 5 分钟一次${RESET}"
+    echo -e "${GREEN}2) 每 10 分钟一次${RESET}"
+    echo -e "${GREEN}3) 每 30 分钟一次${RESET}"
+    echo -e "${GREEN}4) 每小时一次${RESET}"
+    echo -e "${GREEN}5) 每天凌晨 3 点${RESET}"
+    echo -e "${GREEN}6) 每周一凌晨 0 点${RESET}"
+    echo -e "${GREEN}7) 自定义${RESET}"
     read -p "请输入选项 [1-7]: " choice
     case $choice in
         1) cron_expr="*/5 * * * *" ;;
@@ -199,12 +205,11 @@ set_cron() {
 
 show_log() { [ -f "$LOG_FILE" ] && tail -n 50 "$LOG_FILE" || echo "⚠️ 日志文件不存在"; }
 update_tool() { curl -fsSL "https://raw.githubusercontent.com/iu683/star/main/ghupload.sh" -o "$UPLOAD_SCRIPT" && chmod +x "$UPLOAD_SCRIPT"; echo "✅ 已更新"; exit 0; }
-uninstall_tool() { rm -f "$UPLOAD_SCRIPT" "$CONFIG_FILE" "$INSTALL_PATH_UPPER" "$INSTALL_PATH_LOWER"; crontab -l 2>/dev/null | grep -v "upload_to_github.sh upload" | crontab -; echo "✅ 卸载完成"; exit 0; }
 
 menu() {
-    echo -e "$GREEN==============================$RESET"
-    echo -e "$GREEN VPS -> GitHub 上传工具 $RESET"
-    echo -e "$GREEN==============================$RESET"
+    echo -e "${GREEN}==============================${RESET}"
+    echo -e "${GREEN} VPS -> GitHub 上传工具 ${RESET}"
+    echo -e "${GREEN}==============================${RESET}"
     echo -e "${GREEN}1) 初始化配置${RESET}"
     echo -e "${GREEN}2) 手动上传文件${RESET}"
     echo -e "${GREEN}3) 设置定时任务${RESET}"
@@ -227,7 +232,6 @@ menu() {
     esac
 }
 
-
 case "$1" in
     upload) upload_files ;;
     *) menu ;;
@@ -241,8 +245,9 @@ chmod +x "$UPLOAD_SCRIPT"
 # 安装函数
 # ===============================
 install_tool() {
+    echo "ℹ️ 正在安装 VPS -> GitHub 上传工具..."
     write_main_script
-    # 创建启动器
+
     for path in "$INSTALL_PATH_UPPER" "$INSTALL_PATH_LOWER"; do
         cat > "$path" <<EOF
 #!/bin/bash
@@ -250,7 +255,10 @@ install_tool() {
 EOF
         chmod +x "$path"
     done
+
     echo "✅ 安装完成！可用 G 或 g 运行"
+    echo "ℹ️ 主脚本路径: $UPLOAD_SCRIPT"
+    echo "ℹ️ 快捷启动器: $INSTALL_PATH_UPPER , $INSTALL_PATH_LOWER"
     "$UPLOAD_SCRIPT"
 }
 
@@ -258,9 +266,19 @@ EOF
 # 卸载函数
 # ===============================
 uninstall_tool() {
-    rm -f "$UPLOAD_SCRIPT" "$INSTALL_PATH_UPPER" "$INSTALL_PATH_LOWER" "$CONFIG_FILE"
-    crontab -l 2>/dev/null | grep -v "upload_to_github.sh upload" | crontab -
+    echo "ℹ️ 正在卸载 VPS -> GitHub 上传工具..."
+    rm -rf "$BASE_DIR"
+    rm -f "$INSTALL_PATH_UPPER" "$INSTALL_PATH_LOWER"
+
+    if crontab -l 2>/dev/null | grep -q "upload_to_github.sh upload"; then
+        crontab -l 2>/dev/null | grep -v "upload_to_github.sh upload" | crontab -
+        echo "✅ 定时任务已删除"
+    else
+        echo "ℹ️ 未发现定时任务，无需删除"
+    fi
+
     echo "✅ 卸载完成！"
+    exit 0
 }
 
 # ===============================
