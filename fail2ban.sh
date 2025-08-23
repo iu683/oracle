@@ -154,21 +154,12 @@ fail2ban_menu() {
             6)
                 check_fail2ban
                 echo -e "${GREEN}进入日志实时监控，按 Ctrl+C 返回菜单${RESET}"
-    
-                # 捕获 Ctrl+C
-                trap 'echo -e "\n${GREEN}已退出日志监控，返回菜单${RESET}"; break' SIGINT
-
-                while true; do
-                tail -n 20 -f /var/log/fail2ban.log
-                done
-
-                # 恢复默认 SIGINT 行为
+                # 捕获 Ctrl+C 防止退出整个脚本
+                trap 'echo -e "\n${GREEN}已退出日志监控，返回菜单${RESET}"' SIGINT
+                tail -n 20 -f /var/log/fail2ban.log || true
                 trap - SIGINT
-
                 read -p $'\033[32m按回车继续...\033[0m'
                 ;;
-
-
             7)
                 uninstall_fail2ban
                 break
