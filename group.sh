@@ -37,39 +37,28 @@ list_servers() {
     fi
 }
 
-# 批量执行命令（内存数组）
+# 批量执行命令（异步执行 + 日志 + 最终状态）
 run_commands_on_servers() {
     cmd="$1"
-    MAX_RETRIES=2
+    if [ ${#SERVERS[@]} -eq 0 ]; then
+        echo "⚠️ 当前没有服务器"
+        read -n1 -s -r -p "按任意键返回..."
+        return
+    fi
+
     declare -A STATUS
     pids=()
 
     for srv in "${SERVERS[@]}"; do
         IFS=":" read -r name host port user pwd <<< "$srv"
         logfile="/tmp/${name}-$(date +%Y%m%d%H%M%S).log"
-        STATUS["$name"]="等待执行"
+        STATUS["$name"]="执行中"
 
         (
-            retries=0
-            while [ $retries -le $MAX_RETRIES ]; do
-                STATUS["$name"]="执行中（尝试 $(($retries+1))/${MAX_RETRIES+1}）"
-                clear
-                echo "===== 批量执行状态 ====="
-                for n in "${!STATUS[@]}"; do
-                    echo -e "$n: ${STATUS[$n]}"
-                done
-                echo "======================="
-                if sshpass -p "$pwd" ssh -o StrictHostKeyChecking=no -p "$port" "$user@$host" "$cmd" &> "$logfile"; then
-                    STATUS["$name"]="✅ 成功"
-                    break
-                else
-                    STATUS["$name"]="❌ 失败，重试中（$(($retries+1))）"
-                    retries=$((retries+1))
-                    sleep 2
-                fi
-            done
-            if [ $retries -gt $MAX_RETRIES ]; then
-                STATUS["$name"]="❌ 最终失败"
+            if sshpass -p "$pwd" ssh -o StrictHostKeyChecking=no -p "$port" "$user@$host" "$cmd" &> "$logfile"; then
+                STATUS["$name"]="✅ 成功"
+            else
+                STATUS["$name"]="❌ 失败"
             fi
         ) &
         pids+=($!)
@@ -80,13 +69,13 @@ run_commands_on_servers() {
         wait $pid
     done
 
-    # 最终状态显示
-    clear
+    # 显示最终状态
     echo "===== 批量执行最终状态 ====="
     for n in "${!STATUS[@]}"; do
         echo -e "$n: ${STATUS[$n]}"
     done
     echo "============================"
+    read -n1 -s -r -p "按任意键返回菜单..."
 }
 
 # 一级菜单
@@ -110,7 +99,7 @@ while true; do
                 echo -e "${GREEN}=========================${RESET}"
                 echo -e "${GREEN}1. 添加服务器${RESET}"
                 echo -e "${GREEN}2. 删除服务器${RESET}"
-                echo -e "${GREEN}3. 编辑服务器${RESET}"
+                echo -e "${GREEN}3. 编辑服务器（删除后重新添加）${RESET}"
                 echo -e "${GREEN}0. 返回上级菜单${RESET}"
                 read -e -p "请选择操作: " server_choice
 
