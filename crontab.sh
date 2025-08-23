@@ -136,7 +136,7 @@ cron_menu() {
         echo "1. 添加定时任务"
         echo "2. 删除定时任务"
         echo "3. 编辑定时任务"
-        echo "0. 返回上一级菜单"
+        echo "0. 退出脚本"
         echo "------------------------"
         read -e -p "请输入你的选择: " sub_choice
 
@@ -144,7 +144,7 @@ cron_menu() {
             1) add_cron_task ;;
             2) delete_cron_task ;;
             3) edit_cron_task ;;
-            0) break ;;
+            0) exit 0 ;;
             *) echo -e "${RED}无效选择，请重新输入${RESET}" ;;
         esac
 
@@ -153,22 +153,5 @@ cron_menu() {
     done
 }
 
-# 主菜单
-main_menu() {
-    while true; do
-        clear
-        echo -e "${GREEN}=== 主菜单 ===${RESET}"
-        echo "1. 定时任务管理"
-        echo "0. 退出"
-        echo "----------------"
-        read -e -p "请输入你的选择: " choice
-        case $choice in
-            1) cron_menu ;;
-            0) exit 0 ;;
-            *) echo -e "${RED}无效选择${RESET}" ;;
-        esac
-    done
-}
-
-# 启动主菜单
-main_menu
+# 启动直接进入定时任务管理
+cron_menu
