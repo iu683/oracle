@@ -131,15 +131,18 @@ fail2ban_menu() {
                 check_fail2ban
                 echo -e "${GREEN}当前被封禁的 IP 列表:${RESET}"
                 fail2ban-client status sshd | grep 'Banned IP list'
+                read -p $'\033[32m按回车返回菜单...\033[0m'
                 ;;
             5)
                 check_fail2ban
                 echo -e "${GREEN}当前防御规则列表:${RESET}"
                 fail2ban-client status | grep 'Jail list'
+                read -p $'\033[32m按回车返回菜单...\033[0m'
                 ;;
             6)
                 check_fail2ban
-                tail -f /var/log/fail2ban.log
+                echo -e "${GREEN}进入日志实时监控，按 Ctrl+C 停止并返回菜单${RESET}"
+                tail -f /var/log/fail2ban.log || true
                 ;;
             7)
                 uninstall_fail2ban
