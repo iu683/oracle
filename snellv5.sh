@@ -4,11 +4,14 @@ set -e
 # ================== 颜色 ==================
 GREEN="\033[32m"
 RED="\033[31m"
+YELLOW="\033[33m"
 RESET="\033[0m"
 
+# ================== 变量 ==================
 SNELL_DIR="/etc/snell"
 SNELL_CONFIG="$SNELL_DIR/snell-server.conf"
 SNELL_SERVICE="/etc/systemd/system/snell.service"
+LOG_FILE="/var/log/snell_manager.log"
 
 # ================== 工具函数 ==================
 create_user() {
@@ -19,10 +22,6 @@ random_key() {
     tr -dc A-Za-z0-9 </dev/urandom | head -c 16
 }
 
-random_port() {
-    shuf -i 2000-65000 -n 1
-}
-
 get_system_dns() {
     grep -E "^nameserver" /etc/resolv.conf | awk '{print $2}' | paste -sd "," -
 }
@@ -31,43 +30,84 @@ pause() {
     read -n 1 -s -r -p "按任意键返回菜单..."
 }
 
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# ================== 检测端口 ==================
+check_port_open() {
+    local host_ip=$1
+    local port=$2
+    echo -e "${GREEN}[信息] 检测端口 $port 是否开放...${RESET}"
+
+    # 检查 TCP
+    if nc -z -w3 $host_ip $port &>/dev/null; then
+        tcp_status="${GREEN}开放${RESET}"
+    else
+        tcp_status="${RED}未开放${RESET}"
+    fi
+
+    # 检查 UDP
+    if command -v nmap &>/dev/null; then
+        udp_result=$(nmap -sU -p $port $host_ip | grep $port | grep open || true)
+        if [[ -n "$udp_result" ]]; then
+            udp_status="${GREEN}开放${RESET}"
+        else
+            udp_status="${RED}未开放${RESET}"
+        fi
+    else
+        udp_status="${YELLOW}未检测（未安装 nmap）${RESET}"
+    fi
+
+    echo -e "${GREEN}TCP 端口状态: $tcp_status${RESET}"
+    echo -e "${GREEN}UDP 端口状态: $udp_status${RESET}"
+    echo ""
+}
+
 # ================== 配置 Snell ==================
 configure_snell() {
-    echo -e "${GREEN}[信息] 开始配置 Snell...${RESET}"
+    echo -e "${GREEN}\n[信息] 开始配置 Snell...${RESET}"
     mkdir -p $SNELL_DIR
 
-    read -p "请输入 Snell Server 端口[1-65535] (默认: 2345): " port
+    # 端口
+    read -p "$(echo -e ${YELLOW}请输入 Snell Server 端口[1-65535] ${GREEN}(默认: 2345): ${RESET})" port
     port=${port:-2345}
 
-    read -p "请输入 Snell Server 密钥 (默认: 随机生成): " key
+    # 密钥
+    read -p "$(echo -e ${YELLOW}请输入 Snell Server 密钥 ${GREEN}(默认: 随机生成): ${RESET})" key
     key=${key:-$(random_key)}
 
-    echo "配置 OBFS：[注意] 无特殊作用不建议启用"
-    echo "1. TLS   2. HTTP   3. 关闭"
-    read -p "(默认: 3): " obfs
+    # OBFS
+    echo -e "${YELLOW}\n配置 OBFS：[注意] 无特殊作用不建议启用${RESET}"
+    echo -e "${YELLOW}1. TLS   2. HTTP   3. 关闭${RESET}"
+    read -p "$(echo -e ${GREEN}(默认: 3): ${RESET})" obfs
     case $obfs in
         1) obfs="tls" ;;
         2) obfs="http" ;;
         *) obfs="off" ;;
     esac
 
-    echo "是否开启 IPv6 解析？"
-    echo "1. 开启   2. 关闭"
-    read -p "(默认: 2): " ipv6
+    # IPv6
+    echo -e "${YELLOW}\n是否开启 IPv6 解析？${RESET}"
+    echo -e "${YELLOW}1. 开启   2. 关闭${RESET}"
+    read -p "$(echo -e ${GREEN}(默认: 2): ${RESET})" ipv6
     ipv6=${ipv6:-2}
     ipv6=$([ "$ipv6" = "1" ] && echo true || echo false)
 
-    echo "是否开启 TCP Fast Open？"
-    echo "1. 开启   2. 关闭"
-    read -p "(默认: 1): " tfo
+    # TCP Fast Open
+    echo -e "${YELLOW}\n是否开启 TCP Fast Open？${RESET}"
+    echo -e "${YELLOW}1. 开启   2. 关闭${RESET}"
+    read -p "$(echo -e ${GREEN}(默认: 1): ${RESET})" tfo
     tfo=${tfo:-1}
     tfo=$([ "$tfo" = "1" ] && echo true || echo false)
 
+    # DNS
     default_dns=$(get_system_dns)
     [[ -z "$default_dns" ]] && default_dns="1.1.1.1,8.8.8.8"
-    read -p "请输入 DNS (默认: $default_dns): " dns
+    read -p "$(echo -e ${YELLOW}请输入 DNS ${GREEN}(默认: $default_dns): ${RESET})" dns
     dns=${dns:-$default_dns}
 
+    # 写配置文件
     cat > $SNELL_CONFIG <<EOF
 [snell-server]
 listen = 0.0.0.0:$port
@@ -86,8 +126,8 @@ EOF
 iu = snell, $HOST_IP, $port, psk=$key, version=5, tfo=$tfo, reuse=true, ecn=true
 EOF
 
-    # 打印配置信息
-    echo -e "\n${GREEN}====== Snell Server 配置信息 ======${RESET}"
+    echo -e "${GREEN}\n[完成] 配置已写入 $SNELL_CONFIG${RESET}"
+    echo -e "${GREEN}====== Snell Server 配置信息 ======${RESET}"
     echo -e "${GREEN} IPv4 地址      : $HOST_IP${RESET}"
     echo -e "${GREEN} 端口           : $port${RESET}"
     echo -e "${GREEN} 密钥           : $key${RESET}"
@@ -100,6 +140,9 @@ EOF
     echo -e "${GREEN}[信息] Surge 配置：${RESET}"
     cat $SNELL_DIR/config.txt
     echo -e "${GREEN}---------------------------------\n${RESET}"
+
+    # 检测端口
+    check_port_open $HOST_IP $port
 }
 
 # ================== 安装 Snell ==================
@@ -145,8 +188,9 @@ EOF
     systemctl daemon-reload
     systemctl enable snell
     systemctl start snell
-
     echo -e "${GREEN}[完成] Snell 已安装并启动${RESET}"
+    log "Snell 已安装并启动"
+    pause
 }
 
 # ================== 更新 Snell ==================
@@ -155,6 +199,9 @@ update_snell() {
     systemctl stop snell || true
     install_snell
     systemctl restart snell
+    echo -e "${GREEN}[完成] Snell 已更新${RESET}"
+    log "Snell 已更新"
+    pause
 }
 
 # ================== 卸载 Snell ==================
@@ -166,6 +213,33 @@ uninstall_snell() {
     rm -rf $SNELL_DIR
     systemctl daemon-reload
     echo -e "${GREEN}[完成] Snell 已卸载${RESET}"
+    log "Snell 已卸载"
+    pause
+}
+
+# ================== 启动 / 停止 / 重启 ==================
+start_snell() { systemctl start snell && echo -e "${GREEN}Snell 已启动${RESET}" && log "Snell 启动" && pause; }
+stop_snell() { systemctl stop snell && echo -e "${GREEN}Snell 已停止${RESET}" && log "Snell 停止" && pause; }
+restart_snell() { systemctl restart snell && echo -e "${GREEN}Snell 已重启${RESET}" && log "Snell 重启" && pause; }
+
+# ================== 查看日志 ==================
+view_log() {
+    echo -e "${GREEN}[信息] Snell 日志输出（最近20行）${RESET}"
+    journalctl -u snell -n 20 --no-pager
+    pause
+}
+
+# ================== 查看配置 ==================
+view_config() {
+    if [[ -f $SNELL_CONFIG ]]; then
+        echo -e "${GREEN}[信息] 当前 Snell 配置:${RESET}"
+        cat $SNELL_CONFIG
+        echo -e "${GREEN}[信息] Surge 配置:${RESET}"
+        cat $SNELL_DIR/config.txt
+    else
+        echo -e "${RED}[错误] 配置文件不存在${RESET}"
+    fi
+    pause
 }
 
 # ================== 菜单 ==================
@@ -180,24 +254,31 @@ show_menu() {
     echo -e "${GREEN}6. 停止 Snell${RESET}"
     echo -e "${GREEN}7. 重启 Snell${RESET}"
     echo -e "${GREEN}8. 查看日志${RESET}"
+    echo -e "${GREEN}9. 查看配置${RESET}"
     echo -e "${GREEN}0. 退出${RESET}"
     echo -e "${GREEN}============================${RESET}"
+    read -p "请输入选项: " choice
 }
 
 # ================== 主循环 ==================
-while true; do
-    show_menu
-    read -p "请输入选项: " choice
-    case $choice in
-        1) install_snell; pause ;;
-        2) update_snell; pause ;;
-        3) uninstall_snell; pause ;;
-        4) configure_snell; systemctl restart snell; pause ;;
-        5) systemctl start snell; echo -e "${GREEN}Snell 已启动${RESET}"; pause ;;
-        6) systemctl stop snell; echo -e "${GREEN}Snell 已停止${RESET}"; pause ;;
-        7) systemctl restart snell; echo -e "${GREEN}Snell 已重启${RESET}"; pause ;;
-        8) journalctl -u snell -e --no-pager; pause ;;
-        0) exit 0 ;;
-        *) echo -e "${RED}无效输入${RESET}"; pause ;;
-    esac
-done
+main() {
+    [[ $EUID -ne 0 ]] && echo -e "${RED}请以 root 用户运行${RESET}" && exit 1
+    while true; do
+        show_menu
+        case $choice in
+            1) install_snell ;;
+            2) update_snell ;;
+            3) uninstall_snell ;;
+            4) configure_snell ;;
+            5) start_snell ;;
+            6) stop_snell ;;
+            7) restart_snell ;;
+            8) view_log ;;
+            9) view_config ;;
+            0) echo -e "${GREEN}已退出${RESET}"; exit 0 ;;
+            *) echo -e "${RED}无效选项${RESET}"; pause ;;
+        esac
+    done
+}
+
+main
