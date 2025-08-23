@@ -1,15 +1,18 @@
 #!/bin/bash
 # ==========================================
-# Rsync 一键菜单管理脚本（修正版）
+# Rsync 一键菜单管理脚本（重写版）
 # 支持 push/pull/all、定时任务、密码/密钥认证、日志管理
+# 菜单字体绿色
 # ==========================================
 
 set -e
 
+# 颜色
 GREEN="\033[32m"
 RED="\033[31m"
 RESET="\033[0m"
 
+# 配置路径
 CONFIG_FILE="$HOME/.rsync_tasks"
 KEY_DIR="$HOME/.rsync_keys"
 LOG_DIR="$HOME/.rsync_logs"
@@ -17,7 +20,7 @@ LOG_DIR="$HOME/.rsync_logs"
 mkdir -p "$KEY_DIR" "$LOG_DIR"
 touch "$CONFIG_FILE"
 
-send_stats() { :; }
+send_stats() { :; }  # 占位函数
 
 install() {
     if ! command -v "$1" &> /dev/null; then
@@ -108,9 +111,11 @@ run_single_task() {
     IFS='|' read -r name local_path remote remote_path port options auth_method password_or_key <<< "$task"
     local source destination
     if [[ "$direction" == "pull" ]]; then
-        source="$remote:$remote_path"; destination="$local_path"
+        source="$remote:$remote_path"
+        destination="$local_path"
     else
-        source="$local_path"; destination="$remote:$remote_path"
+        source="$local_path"
+        destination="$remote:$remote_path"
     fi
     cleanup_logs
     local ssh_options="-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
@@ -123,27 +128,36 @@ run_single_task() {
         [[ "$(stat -c %a "$password_or_key")" != "600" ]] && chmod 600 "$password_or_key"
         rsync $options -e "ssh -i $password_or_key $ssh_options" "$source" "$destination" &> "$log_file"
     fi
-    [[ $? -eq 0 ]] && echo -e "${GREEN}同步完成! 日志: $log_file${RESET}" || echo -e "${RED}同步失败! 日志: $log_file${RESET}"
+    if [[ $? -eq 0 ]]; then
+        echo -e "${GREEN}同步完成! 日志: $log_file${RESET}"
+    else
+        echo -e "${RED}同步失败! 日志: $log_file${RESET}"
+    fi
 }
 
 run_task() {
     local direction="$1" target="$2"
-    [[ "$1" == "push" || "$1" == "pull" ]] && { direction="$1"; target="$2"; }
-    [[ -z "$target" ]] && read -e -p "任务编号或 all: " target
+    [[ "$1" == "push" || "$1" == "pull" ]] && target="$2"
+    [[ -z "$target" ]] && read -e -p "请输入任务编号或 all: " target
     if [[ "$target" == "all" ]]; then
         local total=$(wc -l < "$CONFIG_FILE")
-        for num in $(seq 1 $total); do run_single_task "$direction" "$num"; done
+        for num in $(seq 1 $total); do
+            run_single_task "$direction" "$num"
+        done
     else
         run_single_task "$direction" "$target"
     fi
 }
 
+# -------------------------
+# 定时任务
+# -------------------------
 schedule_task() {
     read -e -p "任务编号: " num
     [[ ! "$num" =~ ^[0-9]+$ ]] && echo "无效编号" && return
     echo "方向: 1)push 2)pull"
     read -e -p "选择: " dir_choice
-    direction="push"
+    local direction="push"
     [[ "$dir_choice" == "2" ]] && direction="pull"
     echo "间隔: 1)每小时 2)每天 3)每周"
     read -e -p "选择: " interval
@@ -155,19 +169,25 @@ schedule_task() {
         3) cron_time="$minute 0 * * 1" ;;
         *) echo "无效"; return ;;
     esac
-    local log_file="$LOG_DIR/cron_${num}_\$(date +\%Y\%m\%d\%H\%M\%S).log"
+    local log_file="$LOG_DIR/cron_${num}_$(date +%Y%m%d%H%M%S).log"
     local cron_job="$cron_time $HOME/$(basename $0) $direction $num >> $log_file 2>&1"
     (crontab -l 2>/dev/null; echo "$cron_job") | crontab -
     echo -e "${GREEN}定时任务创建: $cron_job${RESET}"
 }
 
-view_tasks() { crontab -l | grep "$(basename $0)" || echo "暂无定时任务"; }
+view_tasks() {
+    crontab -l | grep "$(basename $0)" || echo "暂无定时任务"
+}
+
 delete_task_schedule() {
     read -e -p "任务编号: " num
     crontab -l | grep -v "$(basename $0).*${num}" | crontab -
     echo -e "${GREEN}定时任务删除完成${RESET}"
 }
 
+# -------------------------
+# 菜单
+# -------------------------
 menu() {
     while true; do
         clear
@@ -180,7 +200,7 @@ menu() {
         echo -e "${GREEN}3) 推送同步    4) 拉取同步${RESET}"
         echo -e "${GREEN}5) 创建定时    6) 删除定时${RESET}"
         echo -e "${GREEN}0) 退出${RESET}"
-        read -e -p "选择: " choice
+        read -e -p "请选择: " choice
         case $choice in
             1) add_task ;;
             2) delete_task ;;
@@ -191,7 +211,7 @@ menu() {
             0) exit 0 ;;
             *) echo "无效选择" ;;
         esac
-        read -e -p "回车继续..."
+        read -e -p "按回车继续..."
     done
 }
 
