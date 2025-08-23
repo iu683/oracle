@@ -19,90 +19,40 @@ if ! command -v sshpass >/dev/null 2>&1; then
     apt-get update && apt-get install -y sshpass
 fi
 
-# 目录与文件
-CLUSTER_DIR="/root/cluster"
-SERVERS_FILE="$CLUSTER_DIR/servers.json"
-LOG_DIR="$CLUSTER_DIR/logs"
-
-mkdir -p "$CLUSTER_DIR"
-mkdir -p "$LOG_DIR"
-
-if [ ! -f "$SERVERS_FILE" ] || [ ! -s "$SERVERS_FILE" ]; then
-    echo "[]" > "$SERVERS_FILE"
-fi
-
-# **导出环境变量给 Python 子进程使用**
-export SERVERS_FILE="$SERVERS_FILE"
-
 send_stats() { echo -e ">>> [$1]"; }
 
-# Python管理JSON函数
-manage_servers() {
-python3 - <<'EOF'
-import json
-import sys
-import os
+# 临时内存服务器列表
+# 每台服务器是 "name:host:port:user:pwd"
+SERVERS=()
 
-file_path = os.environ["SERVERS_FILE"]
-op = sys.argv[1]
-
-with open(file_path, "r") as f:
-    servers = json.load(f)
-
-if op == "list":
-    if not servers:
-        print("⚠️ 当前暂无服务器")
-    else:
-        for i, s in enumerate(servers):
-            print(f"{i+1}. {s['name']} - {s['hostname']}:{s['port']} ({s['username']})")
-elif op == "add":
-    name, host, port, user, pwd = sys.argv[2:7]
-    port = int(port)
-    servers.append({"name": name, "hostname": host, "port": port, "username": user, "password": pwd, "remote_path": "/home/"})
-    with open(file_path, "w") as f:
-        json.dump(servers, f, indent=4)
-    print(f"✅ 已添加服务器: {name} ({host})")
-elif op == "delete":
-    keyword = sys.argv[2]
-    servers = [s for s in servers if keyword not in s["name"] and keyword not in s["hostname"]]
-    with open(file_path, "w") as f:
-        json.dump(servers, f, indent=4)
-    print(f"✅ 已删除包含关键字 [{keyword}] 的服务器")
-elif op == "edit":
-    print("请手动编辑 JSON 文件:", file_path)
-EOF
+# 显示服务器列表
+list_servers() {
+    if [ ${#SERVERS[@]} -eq 0 ]; then
+        echo "⚠️ 当前暂无服务器"
+    else
+        for i in "${!SERVERS[@]}"; do
+            IFS=":" read -r name host port user pwd <<< "${SERVERS[$i]}"
+            echo "$((i+1)). $name - $host:$port ($user)"
+        done
+    fi
 }
 
-# 批量执行命令（并行 + 日志 + 自动重试 + 实时状态）
+# 批量执行命令（内存数组）
 run_commands_on_servers() {
     cmd="$1"
     MAX_RETRIES=2
-    servers=$(python3 - <<EOF
-import json, os
-with open(os.environ["SERVERS_FILE"], "r") as f:
-    servers = json.load(f)
-for s in servers:
-    print(f"{s['username']}@{s['hostname']}:{s['port']}:{s['password']}:{s['name']}")
-EOF
-)
-
     declare -A STATUS
     pids=()
 
-    for srv in $servers; do
-        user=$(echo $srv | cut -d: -f1)
-        host=$(echo $srv | cut -d: -f2)
-        port=$(echo $srv | cut -d: -f3)
-        pwd=$(echo $srv | cut -d: -f4)
-        name=$(echo $srv | cut -d: -f5)
-        logfile="$LOG_DIR/$name-$(date +%Y%m%d%H%M%S).log"
+    for srv in "${SERVERS[@]}"; do
+        IFS=":" read -r name host port user pwd <<< "$srv"
+        logfile="/tmp/${name}-$(date +%Y%m%d%H%M%S).log"
         STATUS["$name"]="等待执行"
 
         (
             retries=0
             while [ $retries -le $MAX_RETRIES ]; do
                 STATUS["$name"]="执行中（尝试 $(($retries+1))/${MAX_RETRIES+1}）"
-                # 清屏显示所有状态
                 clear
                 echo "===== 批量执行状态 ====="
                 for n in "${!STATUS[@]}"; do
@@ -156,13 +106,11 @@ while true; do
                 clear
                 send_stats "服务器列表管理"
                 echo -e "${GREEN}===== 当前服务器列表 =====${RESET}"
-                manage_servers list
+                list_servers
                 echo -e "${GREEN}=========================${RESET}"
                 echo -e "${GREEN}1. 添加服务器${RESET}"
                 echo -e "${GREEN}2. 删除服务器${RESET}"
                 echo -e "${GREEN}3. 编辑服务器${RESET}"
-                echo -e "${GREEN}4. 备份集群${RESET}"
-                echo -e "${GREEN}5. 还原集群${RESET}"
                 echo -e "${GREEN}0. 返回上级菜单${RESET}"
                 read -e -p "请选择操作: " server_choice
 
@@ -175,27 +123,22 @@ while true; do
                         read -e -p "用户名(默认root): " user
                         user=${user:-root}
                         read -e -p "密码: " pwd
-                        manage_servers add "$name" "$host" "$port" "$user" "$pwd"
+                        SERVERS+=("$name:$host:$port:$user:$pwd")
+                        echo "✅ 已添加服务器: $name"
                         read -n1 -s -r -p "按任意键返回菜单..."
                         ;;
                     2)
                         read -e -p "请输入关键字删除: " keyword
-                        manage_servers delete "$keyword"
+                        new_servers=()
+                        for srv in "${SERVERS[@]}"; do
+                            [[ $srv == *"$keyword"* ]] || new_servers+=("$srv")
+                        done
+                        SERVERS=("${new_servers[@]}")
+                        echo "✅ 删除完成"
                         read -n1 -s -r -p "按任意键返回菜单..."
                         ;;
                     3)
-                        manage_servers edit
-                        read -n1 -s -r -p "按任意键返回菜单..."
-                        ;;
-                    4)
-                        cp "$SERVERS_FILE" "${SERVERS_FILE}.bak"
-                        echo "✅ 已备份到 ${SERVERS_FILE}.bak"
-                        read -n1 -s -r -p "按任意键返回菜单..."
-                        ;;
-                    5)
-                        read -e -p "请输入要还原的备份文件路径: " backup_file
-                        cp "$backup_file" "$SERVERS_FILE"
-                        echo "✅ 已还原"
+                        echo "⚠️ 编辑服务器请直接删除后重新添加"
                         read -n1 -s -r -p "按任意键返回菜单..."
                         ;;
                     0) break ;;
