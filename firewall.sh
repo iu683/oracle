@@ -300,12 +300,14 @@ menu() {
                 ip6tables -L -n -v --line-numbers
                 echo -e "${YELLOW}已放行端口列表:${RESET}"
                 echo "TCP:"
-                iptables -L INPUT -n | grep ACCEPT | grep tcp
+                iptables -L INPUT -n | grep ACCEPT | grep tcp || echo "无"
                 echo "UDP:"
-                iptables -L INPUT -n | grep ACCEPT | grep udp
+                iptables -L INPUT -n | grep ACCEPT | grep udp || echo "无"
                 echo -e "${GREEN}✅ 状态显示完成${RESET}"
-                read -p "按回车返回菜单..."
+                # 使用更稳妥的 read
+                read -r -p "按回车返回菜单..." || true
                 ;;
+
             0) break ;;
             *) echo -e "${RED}无效选择${RESET}"; read -p "按回车继续..." ;;
         esac
