@@ -23,7 +23,13 @@ random_key() {
 }
 
 get_system_dns() {
-    grep -E "^nameserver" /etc/resolv.conf | awk '{print $2}' | paste -sd "," -
+    local dns=""
+    while read -r line; do
+        ns=$(echo $line | awk '{print $2}')
+        [[ -n "$ns" ]] && dns="${dns:+$dns,}$ns"
+    done < <(grep -E "^nameserver" /etc/resolv.conf)
+    [[ -z "$dns" ]] && dns="1.1.1.1,8.8.8.8"
+    echo "$dns"
 }
 
 pause() { read -n 1 -s -r -p "按任意键返回菜单..."; }
@@ -60,7 +66,7 @@ download_snell() {
     local url=$1
     local output=$2
     echo -e "${GREEN}[信息] 开始下载 Snell...${RESET}"
-    wget --progress=bar:force:noscroll -O "$output" "$url" 2>&1 | grep --line-buffered "%" | sed -u -e "s,\.,,g"
+    wget --progress=bar:force:noscroll -O "$output" "$url"
     echo -e "${GREEN}[完成] 下载完成${RESET}"
 }
 
@@ -104,7 +110,6 @@ configure_snell() {
     tfo=$([ "$tfo" = "1" ] && echo true || echo false)
 
     default_dns=$(get_system_dns)
-    [[ -z "$default_dns" ]] && default_dns="1.1.1.1,8.8.8.8"
     read -p "$(echo -e ${YELLOW}请输入 DNS ${GREEN}(默认: $default_dns)${YELLOW}: ${RESET})" dns
     dns=${dns:-$default_dns}
 
@@ -118,14 +123,9 @@ tfo = $tfo
 dns = $dns
 EOF
 
-    # 安全获取公网 IP，避免 $() 内使用 || 导致语法错误
     HOST_IP=$(curl -s https://api64.ipify.org)
-    if [ -z "$HOST_IP" ]; then
-        HOST_IP=$(curl -s https://ifconfig.me)
-    fi
-    if [ -z "$HOST_IP" ]; then
-        HOST_IP=$(curl -s https://ipinfo.io/ip)
-    fi
+    [[ -z "$HOST_IP" ]] && HOST_IP=$(curl -s https://ifconfig.me)
+    [[ -z "$HOST_IP" ]] && HOST_IP=$(curl -s https://ipinfo.io/ip)
 
     cat <<EOF > $SNELL_DIR/config.txt
 iu = snell, $HOST_IP, $port, psk=$key, version=5, tfo=$tfo, reuse=true, ecn=true
@@ -177,7 +177,6 @@ start_service() {
     echo -e "${GREEN}[完成] Snell 已启动${RESET}"
 }
 
-# ================== 安装 / 更新 / 卸载 ==================
 install_snell() {
     create_user
     mkdir -p $SNELL_DIR
@@ -208,7 +207,6 @@ restart_snell() { systemctl restart snell && echo -e "${GREEN}Snell 已重启${R
 view_log() { echo -e "${GREEN}[信息] Snell 日志输出（最近20行）${RESET}"; journalctl -u snell -n 20 --no-pager; pause; }
 view_config() { [ -f $SNELL_CONFIG ] && cat $SNELL_CONFIG || echo -e "${RED}配置文件不存在${RESET}"; pause; }
 
-# ================== 菜单 ==================
 show_menu() {
     clear
     echo -e "${GREEN}====== Snell 管理脚本 ======${RESET}"
