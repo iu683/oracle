@@ -42,9 +42,9 @@ while true; do
             port=$(check_udp_port $port)
 
             if [ -f "/etc/alpine-release" ]; then
-                SERVER_PORT=$port bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/containers-shell/hy2.sh)"
+                SERVER_PORT=$port bash -c "$(curl -fsSL https://raw.githubusercontent.com/Polarisiu/tool/main/hy2.sh)"
             else
-                HY2_PORT=$port bash -c "$(curl -L https://raw.githubusercontent.com/eooce/scripts/master/Hysteria2.sh)"
+                HY2_PORT=$port bash -c "$(curl -fsSL https://raw.githubusercontent.com/Polarisiu/tool/main/azHysteria2.sh)"
             fi
 
             echo -e "${green}Hysteria2 安装完成！端口: $port${re}"
