@@ -3,13 +3,12 @@ set -e
 
 GREEN="\033[32m"
 RED="\033[31m"
-YELLOW="\033[33m"
 RESET="\033[0m"
 
 # 检查 Fail2Ban 是否运行
 check_fail2ban() {
     if ! systemctl is-active --quiet fail2ban; then
-        echo -e "${YELLOW}Fail2Ban 未运行，正在启动...${RESET}"
+        echo -e "${GREEN}Fail2Ban 未运行，正在启动...${RESET}"
         systemctl enable --now fail2ban
         sleep 1
     fi
@@ -17,7 +16,7 @@ check_fail2ban() {
 
 # 安装 Fail2Ban
 install_fail2ban() {
-    echo -e "${YELLOW}正在安装 Fail2Ban...${RESET}"
+    echo -e "${GREEN}正在安装 Fail2Ban...${RESET}"
     if [ -f /etc/debian_version ]; then
         apt update
         apt install -y fail2ban curl wget
@@ -25,7 +24,7 @@ install_fail2ban() {
         yum install -y epel-release
         yum install -y fail2ban curl wget
     else
-        echo "不支持的操作系统"
+        echo -e "${RED}不支持的操作系统${RESET}"
         exit 1
     fi
     systemctl enable --now fail2ban
@@ -40,17 +39,17 @@ configure_ssh() {
     elif [ -f /etc/redhat-release ]; then
         LOG_PATH="/var/log/secure"
     else
-        echo "不支持的操作系统"
+        echo -e "${RED}不支持的操作系统${RESET}"
         exit 1
     fi
 
-    read -p "请输入 SSH 端口（默认22）: " SSH_PORT
+    read -p "$(echo -e ${GREEN}请输入 SSH 端口（默认22）: ${RESET})" SSH_PORT
     SSH_PORT=${SSH_PORT:-22}
 
-    read -p "请输入最大失败尝试次数 maxretry（默认5）: " MAX_RETRY
+    read -p "$(echo -e ${GREEN}请输入最大失败尝试次数 maxretry（默认5）: ${RESET})" MAX_RETRY
     MAX_RETRY=${MAX_RETRY:-5}
 
-    read -p "请输入封禁时间 bantime(秒，默认600) : " BAN_TIME
+    read -p "$(echo -e ${GREEN}请输入封禁时间 bantime(秒，默认600) : ${RESET})" BAN_TIME
     BAN_TIME=${BAN_TIME:-600}
 
     mkdir -p /etc/fail2ban/jail.d
@@ -71,7 +70,7 @@ EOF
 
 # 卸载 Fail2Ban
 uninstall_fail2ban() {
-    echo -e "${RED}正在卸载 Fail2Ban...${RESET}"
+    echo -e "${GREEN}正在卸载 Fail2Ban...${RESET}"
     systemctl stop fail2ban || true
     if [ -f /etc/debian_version ]; then
         apt remove -y fail2ban
@@ -85,19 +84,19 @@ uninstall_fail2ban() {
 fail2ban_menu() {
     while true; do
         clear
-        echo "SSH 防暴力破解管理菜单"
-        echo "------------------------"
-        echo "1. 安装并开启SSH防暴力破解"
-        echo "2. 关闭SSH防暴力破解"
-        echo "3. 配置SSH防护参数"
-        echo "4. 查看SSH拦截记录"
-        echo "5. 查看防御规则列表"
-        echo "6. 查看日志实时监控"
-        echo "7. 卸载防御程序"
-        echo "0. 退出"
-        echo "------------------------"
+        echo -e "${GREEN}SSH 防暴力破解管理菜单${RESET}"
+        echo -e "${GREEN}------------------------${RESET}"
+        echo -e "${GREEN}1. 安装并开启SSH防暴力破解${RESET}"
+        echo -e "${GREEN}2. 关闭SSH防暴力破解${RESET}"
+        echo -e "${GREEN}3. 配置SSH防护参数${RESET}"
+        echo -e "${GREEN}4. 查看SSH拦截记录${RESET}"
+        echo -e "${GREEN}5. 查看防御规则列表${RESET}"
+        echo -e "${GREEN}6. 查看日志实时监控${RESET}"
+        echo -e "${GREEN}7. 卸载防御程序${RESET}"
+        echo -e "${GREEN}0. 退出${RESET}"
+        echo -e "${GREEN}------------------------${RESET}"
 
-        read -p $'\033[1;91m请输入你的选择: \033[0m' sub_choice
+        read -p "$(echo -e ${GREEN}请输入你的选择: ${RESET})" sub_choice
 
         case $sub_choice in
             1)
@@ -114,7 +113,7 @@ fail2ban_menu() {
                     sed -i '/enabled/s/true/false/' /etc/fail2ban/jail.d/sshd.local
                     systemctl restart fail2ban
                     sleep 1
-                    echo -e "${YELLOW}SSH 防暴力破解已关闭${RESET}"
+                    echo -e "${GREEN}SSH 防暴力破解已关闭${RESET}"
                     fail2ban-client status sshd
                 else
                     echo -e "${RED}SSH 配置文件不存在，请先安装并开启 SSH 防护${RESET}"
@@ -130,12 +129,12 @@ fail2ban_menu() {
                 ;;
             4)
                 check_fail2ban
-                echo -e "${YELLOW}当前被封禁的 IP 列表:${RESET}"
+                echo -e "${GREEN}当前被封禁的 IP 列表:${RESET}"
                 fail2ban-client status sshd | grep 'Banned IP list'
                 ;;
             5)
                 check_fail2ban
-                echo -e "${YELLOW}当前防御规则列表:${RESET}"
+                echo -e "${GREEN}当前防御规则列表:${RESET}"
                 fail2ban-client status | grep 'Jail list'
                 ;;
             6)
@@ -150,7 +149,7 @@ fail2ban_menu() {
                 break
                 ;;
             *)
-                echo "无效的选择，请重新输入"
+                echo -e "${RED}无效的选择，请重新输入${RESET}"
                 sleep 1
                 ;;
         esac
