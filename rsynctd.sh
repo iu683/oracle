@@ -77,8 +77,8 @@ add_task() {
     esac
 
     echo "请选择同步模式:"
-    echo "1) 标准模式 (-avz) ：安全增量同步，不会删除目标目录中源目录不存在的文件"
-    echo "2) 删除目标模式 (-avz --delete) ：完全镜像同步，目标目录会删除源目录不存在的文件"
+    echo "1) 标准模式 (-avz)"
+    echo "2) 删除目标模式 (-avz --delete)"
     read -e -p "请选择 (1/2): " mode
     case $mode in
         1) options="-avz" ;;
@@ -130,15 +130,12 @@ run_task() {
 
     local ssh_options="-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-    # SSH 测试连接
     if [[ "$auth_method" == "password" ]]; then
         install sshpass
-        sshpass -p "$password_or_key" ssh -o BatchMode=yes -p "$port" "$remote" "exit" 2>/dev/null || { echo -e "${RED}SSH认证失败!${RESET}"; return; }
         sshpass -p "$password_or_key" rsync $options -e "ssh $ssh_options" "$source" "$destination"
     else
         [[ ! -f "$password_or_key" ]] && { echo -e "${RED}密钥不存在${RESET}"; return; }
         [[ "$(stat -c %a "$password_or_key")" != "600" ]] && chmod 600 "$password_or_key"
-        ssh -i "$password_or_key" -p "$port" "$remote" "exit" 2>/dev/null || { echo -e "${RED}SSH认证失败!${RESET}"; return; }
         rsync $options -e "ssh -i $password_or_key $ssh_options" "$source" "$destination"
     fi
 
@@ -163,30 +160,22 @@ schedule_task() {
         *) echo "无效选择"; return ;;
     esac
 
-    local cron_job="$cron_time bash $BASE_DIR/rsync_manager.sh --run $num"
-    # 避免重复
-    crontab -l 2>/dev/null | grep -v "$BASE_DIR/rsync_manager.sh --run $num" | { cat; echo "$cron_job"; } | crontab -
+    local cron_job="$cron_time bash $BASE_DIR/run_task.sh $num"
+    crontab -l 2>/dev/null | grep -v "$BASE_DIR/run_task.sh $num" | { cat; echo "$cron_job"; } | crontab -
     echo -e "${GREEN}定时任务已创建: $cron_job${RESET}"
 }
 
 delete_task_schedule() {
     read -e -p "请输入要删除的任务编号: " num
     [[ ! "$num" =~ ^[0-9]+$ ]] && { echo "无效任务编号"; return; }
-    crontab -l 2>/dev/null | grep -v "$BASE_DIR/rsync_manager.sh --run $num" | crontab -
+    crontab -l 2>/dev/null | grep -v "$BASE_DIR/run_task.sh $num" | crontab -
     echo -e "${GREEN}已删除任务编号 $num 的定时任务${RESET}"
 }
 
 # -------------------------
-# 任务管理菜单
+# 菜单
 # -------------------------
 rsync_manager() {
-    # 如果有命令行参数 --run N，则直接执行任务
-    if [[ "$1" == "--run" && -n "$2" ]]; then
-        num="$2"
-        run_task_number "$num"
-        exit 0
-    fi
-
     while true; do
         clear
         echo -e "${GREEN}===== Rsync 一键菜单工具 =====${RESET}"
@@ -210,3 +199,6 @@ rsync_manager() {
         read -e -p "按回车继续..."
     done
 }
+
+# 启动菜单
+rsync_manager
