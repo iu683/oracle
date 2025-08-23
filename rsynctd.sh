@@ -1,17 +1,15 @@
 #!/bin/bash
 # ==========================================
-# Rsync 一键菜单管理脚本
+# Rsync 一键菜单管理脚本（修正版）
 # 支持 push/pull/all、定时任务、密码/密钥认证、日志管理
-# 菜单字体为绿色
 # ==========================================
 
 set -e
 
-# 颜色
 GREEN="\033[32m"
+RED="\033[31m"
 RESET="\033[0m"
 
-# 配置路径
 CONFIG_FILE="$HOME/.rsync_tasks"
 KEY_DIR="$HOME/.rsync_keys"
 LOG_DIR="$HOME/.rsync_logs"
@@ -19,7 +17,7 @@ LOG_DIR="$HOME/.rsync_logs"
 mkdir -p "$KEY_DIR" "$LOG_DIR"
 touch "$CONFIG_FILE"
 
-send_stats() { :; }  # 占位函数
+send_stats() { :; }
 
 install() {
     if ! command -v "$1" &> /dev/null; then
@@ -40,11 +38,8 @@ cleanup_logs() { find "$LOG_DIR" -type f -mtime +7 -name "*.log" -exec rm -f {} 
 list_tasks() {
     echo -e "${GREEN}已保存的同步任务:${RESET}"
     echo "---------------------------------"
-    if [[ ! -s "$CONFIG_FILE" ]]; then
-        echo "暂无任务"
-    else
-        awk -F'|' '{printf "%d - %s: %s -> %s:%s [%s]\n", NR, $1, $2, $3, $4, $6}' "$CONFIG_FILE"
-    fi
+    [[ ! -s "$CONFIG_FILE" ]] && echo "暂无任务" && return
+    awk -F'|' '{printf "%d - %s: %s -> %s:%s [%s]\n", NR, $1, $2, $3, $4, $6}' "$CONFIG_FILE"
     echo "---------------------------------"
 }
 
@@ -68,7 +63,7 @@ add_task() {
             echo "粘贴密钥 (完成后按两次回车):"
             password_or_key=""
             while IFS= read -r line || [[ -n "$line" ]]; do
-                if [[ -z "$line" && "$password_or_key" == *"PRIVATE KEY"* ]]; then break; fi
+                [[ -z "$line" && "$password_or_key" == *"PRIVATE KEY"* ]] && break
                 password_or_key+="$line"$'\n'
             done
             key_file="$KEY_DIR/${name}_sync.key"
@@ -77,7 +72,9 @@ add_task() {
             password_or_key="$key_file"
             auth_method="key"
             ;;
-        *) echo "无效选择"; return ;;
+        *)
+            echo "无效选择"; return
+            ;;
     esac
 
     echo "同步模式: 1)标准(-avz) 2)删除目标(-avz --delete)"
@@ -97,7 +94,7 @@ delete_task() {
     send_stats "删除同步任务"
     read -e -p "请输入任务编号: " num
     local task=$(sed -n "${num}p" "$CONFIG_FILE")
-    if [[ -z "$task" ]]; then echo "任务不存在"; return; fi
+    [[ -z "$task" ]] && echo "任务不存在" && return
     IFS='|' read -r name local_path remote remote_path port options auth_method password_or_key <<< "$task"
     [[ "$auth_method" == "key" && "$password_or_key" == "$KEY_DIR"* ]] && rm -f "$password_or_key"
     sed -i "${num}d" "$CONFIG_FILE"
@@ -141,9 +138,6 @@ run_task() {
     fi
 }
 
-# -------------------------
-# 定时任务
-# -------------------------
 schedule_task() {
     read -e -p "任务编号: " num
     [[ ! "$num" =~ ^[0-9]+$ ]] && echo "无效编号" && return
@@ -168,16 +162,12 @@ schedule_task() {
 }
 
 view_tasks() { crontab -l | grep "$(basename $0)" || echo "暂无定时任务"; }
-
 delete_task_schedule() {
     read -e -p "任务编号: " num
     crontab -l | grep -v "$(basename $0).*${num}" | crontab -
     echo -e "${GREEN}定时任务删除完成${RESET}"
 }
 
-# -------------------------
-# 菜单
-# -------------------------
 menu() {
     while true; do
         clear
@@ -211,4 +201,5 @@ menu() {
 if [[ "$1" == "push" || "$1" == "pull" ]]; then
     run_task "$1" "$2"
 else
-menu
+    menu
+fi
