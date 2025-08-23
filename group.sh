@@ -33,14 +33,51 @@ fi
 
 send_stats() { echo -e ">>> [$1]"; }
 
+# Python管理JSON函数
+manage_servers() {
+python3 - <<'EOF'
+import json
+import sys
+import os
+
+file_path = os.environ["SERVERS_FILE"]
+op = sys.argv[1]
+
+with open(file_path, "r") as f:
+    servers = json.load(f)
+
+if op == "list":
+    if not servers:
+        print("⚠️ 当前暂无服务器")
+    else:
+        for i, s in enumerate(servers):
+            print(f"{i+1}. {s['name']} - {s['hostname']}:{s['port']} ({s['username']})")
+elif op == "add":
+    name, host, port, user, pwd = sys.argv[2:7]
+    port = int(port)
+    servers.append({"name": name, "hostname": host, "port": port, "username": user, "password": pwd, "remote_path": "/home/"})
+    with open(file_path, "w") as f:
+        json.dump(servers, f, indent=4)
+    print(f"✅ 已添加服务器: {name} ({host})")
+elif op == "delete":
+    keyword = sys.argv[2]
+    servers = [s for s in servers if keyword not in s["name"] and keyword not in s["hostname"]]
+    with open(file_path, "w") as f:
+        json.dump(servers, f, indent=4)
+    print(f"✅ 已删除包含关键字 [{keyword}] 的服务器")
+elif op == "edit":
+    print("请手动编辑 JSON 文件:", file_path)
+EOF
+}
+
 # 批量执行命令（并行 + 日志 + 自动重试 + 实时状态）
 run_commands_on_servers() {
     cmd="$1"
     MAX_RETRIES=2
     servers=$(python3 - <<EOF
-import json
-with open("$SERVERS_FILE","r") as f:
-    servers=json.load(f)
+import json, os
+with open(os.environ["SERVERS_FILE"], "r") as f:
+    servers = json.load(f)
 for s in servers:
     print(f"{s['username']}@{s['hostname']}:{s['port']}:{s['password']}:{s['name']}")
 EOF
@@ -97,39 +134,6 @@ EOF
         echo -e "$n: ${STATUS[$n]}"
     done
     echo "============================"
-}
-
-# Python管理JSON函数
-manage_servers() {
-python3 - <<EOF
-import json
-import sys
-
-file_path = "$SERVERS_FILE"
-op = sys.argv[1]
-
-with open(file_path, "r") as f:
-    servers = json.load(f)
-
-if op == "list":
-    for i, s in enumerate(servers):
-        print(f"{i+1}. {s['name']} - {s['hostname']}:{s['port']} ({s['username']})")
-elif op == "add":
-    name, host, port, user, pwd = sys.argv[2:7]
-    port = int(port)
-    servers.append({"name": name, "hostname": host, "port": port, "username": user, "password": pwd, "remote_path": "/home/"})
-    with open(file_path, "w") as f:
-        json.dump(servers, f, indent=4)
-    print(f"✅ 已添加服务器: {name} ({host})")
-elif op == "delete":
-    keyword = sys.argv[2]
-    servers = [s for s in servers if keyword not in s["name"] and keyword not in s["hostname"]]
-    with open(file_path, "w") as f:
-        json.dump(servers, f, indent=4)
-    print(f"✅ 已删除包含关键字 [{keyword}] 的服务器")
-elif op == "edit":
-    print("请手动编辑 JSON 文件:", file_path)
-EOF
 }
 
 # 一级菜单
