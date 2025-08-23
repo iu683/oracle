@@ -145,15 +145,7 @@ ping_action() {
 install_geoip() {
     mkdir -p /usr/share/xt_geoip
     cd /usr/share/xt_geoip || return
-    echo -e "${YELLOW}正在下载 GeoIP 数据（国内镜像）请稍候...${RESET}"
-    curl -L -O https://github.com/apnic/geoip/raw/master/GeoLite2-Country-CSV.zip
-    unzip -o GeoLite2-Country-CSV.zip
-    mkdir -p /usr/share/xt_geoip/build
-    for csv in $(find . -name "*-Blocks-IPv4.csv" -o -name "*-Blocks-IPv6.csv"); do
-        csv2bin "$csv" /usr/share/xt_geoip/build
-    done
-    echo -e "${GREEN}✅ GeoIP 数据下载并生成完成${RESET}"
-    read -p "按回车继续..."
+    echo -e "${YELLOW}GeoIP 功能可用，但不进行自动更新${RESET}"
 }
 
 manage_country_rules() {
@@ -266,8 +258,18 @@ menu() {
                 ;;
             9) clear_firewall ;;
             10) restore_default_rules ;;
-            11) ping_action allow ;;
-            12) ping_action deny ;;
+            11)
+                ping_action allow
+                save_rules
+                echo -e "${GREEN}✅ 已允许 PING（ICMP）${RESET}"
+                read -p "按回车继续..."
+                ;;
+            12)
+                ping_action deny
+                save_rules
+                echo -e "${GREEN}✅ 已禁用 PING（ICMP）${RESET}"
+                read -p "按回车继续..."
+                ;;
             13)
                 read -e -p "请输入阻止的国家代码（如 CN, US, JP）: " CC
                 manage_country_rules block "$CC"
@@ -301,7 +303,8 @@ menu() {
                 iptables -L INPUT -n | grep ACCEPT | grep tcp
                 echo "UDP:"
                 iptables -L INPUT -n | grep ACCEPT | grep udp
-                read -p "按回车继续..."
+                echo -e "${GREEN}✅ 状态显示完成${RESET}"
+                read -p "按回车返回菜单..."
                 ;;
             0) break ;;
             *) echo -e "${RED}无效选择${RESET}"; read -p "按回车继续..." ;;
