@@ -26,13 +26,8 @@ get_system_dns() {
     grep -E "^nameserver" /etc/resolv.conf | awk '{print $2}' | paste -sd "," -
 }
 
-pause() {
-    read -n 1 -s -r -p "按任意键返回菜单..."
-}
-
-log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
-}
+pause() { read -n 1 -s -r -p "按任意键返回菜单..."; }
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"; }
 
 check_port_open() {
     local host_ip=$1
@@ -62,9 +57,9 @@ check_port_open() {
 }
 
 download_snell() {
-    echo -e "${GREEN}[信息] 开始下载 Snell...${RESET}"
     local url=$1
     local output=$2
+    echo -e "${GREEN}[信息] 开始下载 Snell...${RESET}"
     wget --progress=bar:force:noscroll -O "$output" "$url" 2>&1 | grep --line-buffered "%" | sed -u -e "s,\.,,g"
     echo -e "${GREEN}[完成] 下载完成${RESET}"
 }
@@ -123,7 +118,14 @@ tfo = $tfo
 dns = $dns
 EOF
 
-    HOST_IP=$(curl -s https://api64.ipify.org || curl -s https://ifconfig.me || curl -s https://ipinfo.io/ip)
+    # 安全获取公网 IP，避免 $() 内使用 || 导致语法错误
+    HOST_IP=$(curl -s https://api64.ipify.org)
+    if [ -z "$HOST_IP" ]; then
+        HOST_IP=$(curl -s https://ifconfig.me)
+    fi
+    if [ -z "$HOST_IP" ]; then
+        HOST_IP=$(curl -s https://ipinfo.io/ip)
+    fi
 
     cat <<EOF > $SNELL_DIR/config.txt
 iu = snell, $HOST_IP, $port, psk=$key, version=5, tfo=$tfo, reuse=true, ecn=true
@@ -225,22 +227,24 @@ show_menu() {
 }
 
 # ================== 主循环 ==================
-check_root() { [ "$(id -u)" != "0" ] && echo -e "${RED}请以 root 权限运行${RESET}" && exit 1; }
-check_root
+main() {
+    [ "$(id -u)" != "0" ] && echo -e "${RED}请使用 root 用户运行${RESET}" && exit 1
+    while true; do
+        show_menu
+        case $choice in
+            1) install_snell ;;
+            2) update_snell ;;
+            3) uninstall_snell ;;
+            4) configure_snell ;;
+            5) start_snell ;;
+            6) stop_snell ;;
+            7) restart_snell ;;
+            8) view_log ;;
+            9) view_config ;;
+            0) exit ;;
+            *) echo -e "${RED}无效选项${RESET}" && pause ;;
+        esac
+    done
+}
 
-while true; do
-    show_menu
-    case $choice in
-        1) install_snell ;;
-        2) update_snell ;;
-        3) uninstall_snell ;;
-        4) configure_snell ;;
-        5) start_snell ;;
-        6) stop_snell ;;
-        7) restart_snell ;;
-        8) view_log ;;
-        9) view_config ;;
-        0) echo -e "${GREEN}已退出${RESET}"; exit 0 ;;
-        *) echo -e "${RED}无效选项${RESET}"; pause ;;
-    esac
-done
+main
