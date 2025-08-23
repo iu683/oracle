@@ -85,6 +85,8 @@ show_client_config() {
     echo -e "${green}服务器端口: $port${re}"
     echo -e "${green}协议: hysteria${re}"
     echo -e "${green}密码: $password${re}"
+    echo -e "${green}SNI: www.bing.com${re}"
+    echo -e "${green}alpn:h3${re}"
     echo
     read -p "按回车返回菜单..."
 }
