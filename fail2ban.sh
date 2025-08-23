@@ -6,6 +6,16 @@ RED="\033[31m"
 YELLOW="\033[33m"
 RESET="\033[0m"
 
+# 检查 Fail2Ban 是否运行
+check_fail2ban() {
+    if ! systemctl is-active --quiet fail2ban; then
+        echo -e "${YELLOW}Fail2Ban 未运行，正在启动...${RESET}"
+        systemctl enable --now fail2ban
+        sleep 1
+    fi
+}
+
+# 安装 Fail2Ban
 install_fail2ban() {
     echo -e "${YELLOW}正在安装 Fail2Ban...${RESET}"
     if [ -f /etc/debian_version ]; then
@@ -22,7 +32,18 @@ install_fail2ban() {
     sleep 1
 }
 
+# 配置 SSH 防护
 configure_ssh() {
+    # 设置日志路径
+    if [ -f /etc/debian_version ]; then
+        LOG_PATH="/var/log/auth.log"
+    elif [ -f /etc/redhat-release ]; then
+        LOG_PATH="/var/log/secure"
+    else
+        echo "不支持的操作系统"
+        exit 1
+    fi
+
     read -p "请输入 SSH 端口（默认22）: " SSH_PORT
     SSH_PORT=${SSH_PORT:-22}
 
@@ -38,7 +59,7 @@ configure_ssh() {
 enabled = true
 port = $SSH_PORT
 filter = sshd
-logpath = /var/log/auth.log
+logpath = $LOG_PATH
 maxretry = $MAX_RETRY
 bantime  = $BAN_TIME
 EOF
@@ -48,6 +69,7 @@ EOF
     echo -e "${GREEN}SSH 防暴力破解配置完成${RESET}"
 }
 
+# 卸载 Fail2Ban
 uninstall_fail2ban() {
     echo -e "${RED}正在卸载 Fail2Ban...${RESET}"
     systemctl stop fail2ban || true
@@ -59,6 +81,7 @@ uninstall_fail2ban() {
     echo -e "${GREEN}Fail2Ban 已卸载${RESET}"
 }
 
+# 菜单
 fail2ban_menu() {
     while true; do
         clear
@@ -78,16 +101,15 @@ fail2ban_menu() {
 
         case $sub_choice in
             1)
-                # 安装 Fail2Ban（如果没安装）
                 if ! command -v fail2ban-client >/dev/null 2>&1; then
                     install_fail2ban
                 else
                     systemctl enable --now fail2ban
                 fi
-                # 配置 SSH 防护
                 configure_ssh
                 ;;
             2)
+                check_fail2ban
                 if [ -f /etc/fail2ban/jail.d/sshd.local ]; then
                     sed -i '/enabled/s/true/false/' /etc/fail2ban/jail.d/sshd.local
                     systemctl restart fail2ban
@@ -99,6 +121,7 @@ fail2ban_menu() {
                 fi
                 ;;
             3)
+                check_fail2ban
                 if [ -f /etc/fail2ban/jail.d/sshd.local ]; then
                     configure_ssh
                 else
@@ -106,13 +129,18 @@ fail2ban_menu() {
                 fi
                 ;;
             4)
-                check_fail2ban_running && fail2ban-client status sshd
+                check_fail2ban
+                echo -e "${YELLOW}当前被封禁的 IP 列表:${RESET}"
+                fail2ban-client status sshd | grep 'Banned IP list'
                 ;;
             5)
-                check_fail2ban_running && fail2ban-client status
+                check_fail2ban
+                echo -e "${YELLOW}当前防御规则列表:${RESET}"
+                fail2ban-client status | grep 'Jail list'
                 ;;
             6)
-                check_fail2ban_running && tail -f /var/log/fail2ban.log
+                check_fail2ban
+                tail -f /var/log/fail2ban.log
                 ;;
             7)
                 uninstall_fail2ban
@@ -127,14 +155,6 @@ fail2ban_menu() {
                 ;;
         esac
     done
-}
-
-check_fail2ban_running() {
-    if ! systemctl is-active --quiet fail2ban; then
-        echo -e "${YELLOW}Fail2Ban 未运行，请先安装或启动${RESET}"
-        return 1
-    fi
-    return 0
 }
 
 # 主逻辑
