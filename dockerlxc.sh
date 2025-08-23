@@ -91,7 +91,7 @@ while true; do
     echo -e "${GREEN}0. 退出脚本${RESET}"
     echo -e "${CYAN}===============================================${RESET}"
 
-    read -p "${GREEN}请输入你的选择 [0-6]: ${RESET}" choice
+    read -p "请输入你的选择 [0-6]: " choice
 
     case "$choice" in
         1) swap_manage ;;
