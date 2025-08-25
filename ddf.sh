@@ -99,8 +99,26 @@ restart_container() {
 }
 
 remove_container() {
-    docker rm -f ${CONTAINER_NAME} && echo -e "${GREEN}容器已删除${RESET}"
+    if [ "$(docker ps -a -q -f name=^/${CONTAINER_NAME}$)" ]; then
+        read -p "确认删除容器 ${CONTAINER_NAME} 并删除挂载的数据库文件吗？[y/N]: " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            docker rm -f ${CONTAINER_NAME} && echo -e "${GREEN}容器已删除${RESET}"
+            # 删除数据库文件
+            if [ -f "$DB_PATH" ]; then
+                rm -f "$DB_PATH" && echo -e "${GREEN}数据库文件已删除: $DB_PATH${RESET}"
+            fi
+            # 删除配置文件（可选，通常不删除以防误操作）
+            # if [ -f "$CONF_PATH" ]; then
+            #     rm -f "$CONF_PATH" && echo -e "${GREEN}配置文件已删除: $CONF_PATH${RESET}"
+            # fi
+        else
+            echo "取消删除操作，返回菜单"
+        fi
+    else
+        echo -e "${YELLOW}容器 ${CONTAINER_NAME} 不存在${RESET}"
+    fi
 }
+
 
 status_container() {
     docker ps -a --filter "name=${CONTAINER_NAME}"
