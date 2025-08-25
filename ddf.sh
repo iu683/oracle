@@ -1,153 +1,130 @@
 #!/bin/bash
 
-# ================== 颜色定义 ==================
-green="\033[32m"
-re="\033[0m"
+# ================== 颜色 ==================
+GREEN="\033[32m"
+RED="\033[31m"
+YELLOW="\033[33m"
+RESET="\033[0m"
 
-# ================== 工具函数 ==================
-random_port() {
-    shuf -i 2000-65000 -n 1
-}
+CONTAINER_NAME="bepusdt"
+IMAGE_NAME="v03413/bepusdt:latest"
 
-check_udp_port() {
+# 默认路径
+DEFAULT_CONF_PATH="/root/bepusdt/conf.toml"
+DEFAULT_DB_PATH="/root/bepusdt/sqlite.db"
+
+# ================== 检查 root ==================
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}请使用 root 用户运行此脚本！${RESET}"
+    exit 1
+fi
+
+# ================== 函数 ==================
+
+check_port() {
     local port=$1
-    while ss -u -l -n | awk '{print $5}' | grep -w ":$port" >/dev/null 2>&1; do
-        echo -e "${green}${port}端口已经被其他程序占用，请更换端口重试${re}"
-        read -p "请输入端口（回车随机端口）: " port
-        [[ -z $port ]] && port=$(random_port)
+    while lsof -i :"$port" >/dev/null 2>&1; do
+        echo -e "${YELLOW}端口 $port 已被占用，请输入新的端口: ${RESET}"
+        read port
     done
     echo $port
 }
 
-open_firewall_port() {
-    local port=$1
-    # ufw
-    if command -v ufw >/dev/null 2>&1; then
-        ufw allow $port/udp >/dev/null 2>&1
+start_container() {
+    if [ "$(docker ps -a -q -f name=^/${CONTAINER_NAME}$)" ]; then
+        echo -e "${YELLOW}容器 ${CONTAINER_NAME} 已存在${RESET}"
+        echo "请选择操作："
+        echo "1) 重启容器"
+        echo "2) 更新镜像并重建容器"
+        echo "3) 删除容器并重新创建"
+        echo "0) 返回菜单"
+        read -p "选择: " opt
+        case $opt in
+            1)
+                docker restart ${CONTAINER_NAME} && echo -e "${GREEN}容器已重启${RESET}" ;;
+            2)
+                docker pull ${IMAGE_NAME}
+                docker rm -f ${CONTAINER_NAME}
+                echo -e "${GREEN}镜像已更新，容器已删除${RESET}" ;;
+            3)
+                docker rm -f ${CONTAINER_NAME} && echo -e "${GREEN}容器已删除${RESET}" ;;
+            0)
+                return ;;
+            *)
+                echo -e "${RED}无效选择，返回菜单${RESET}" ;;
+        esac
     fi
-    # firewalld
-    if command -v firewall-cmd >/dev/null 2>&1; then
-        firewall-cmd --permanent --add-port=${port}/udp >/dev/null 2>&1
-        firewall-cmd --reload >/dev/null 2>&1
-    fi
-    # iptables
-    if command -v iptables >/dev/null 2>&1; then
-        iptables -C INPUT -p udp --dport $port -j ACCEPT >/dev/null 2>&1 || \
-        iptables -I INPUT -p udp --dport $port -j ACCEPT
-    fi
-}
 
-show_status() {
-    clear
-    echo -e "${green}Hysteria2 服务状态：${re}"
-    if [ -f "/etc/alpine-release" ]; then
-        if pgrep -f '[w]eb' >/dev/null 2>&1; then
-            echo -e "${green}运行中 (Alpine版)${re}"
-            echo -e "${green}监听端口: $(grep -Po '(?<=listen: :)[0-9]+' /root/config.yaml)${re}"
-        else
-            echo -e "${green}未运行${re}"
-        fi
+    # 输入配置文件路径，支持默认
+    read -p "请输入宿主机 conf.toml 配置文件路径 [默认: ${DEFAULT_CONF_PATH}]: " CONF_PATH
+    CONF_PATH=${CONF_PATH:-$DEFAULT_CONF_PATH}
+
+    # 输入数据库路径，支持默认
+    read -p "请输入宿主机数据库文件路径 [默认: ${DEFAULT_DB_PATH}]: " DB_PATH
+    DB_PATH=${DB_PATH:-$DEFAULT_DB_PATH}
+
+    read -p "请输入宿主机映射端口: " PORT
+    PORT=$(check_port $PORT)
+
+    # 检查文件
+    if [ ! -f "$CONF_PATH" ]; then
+        echo -e "${RED}配置文件不存在: $CONF_PATH${RESET}"
+        return
+    fi
+
+    if [ ! -f "$DB_PATH" ]; then
+        echo -e "${YELLOW}数据库文件不存在，启动后容器会自动创建: $DB_PATH${RESET}"
+    fi
+
+    # 启动容器
+    docker run -d --name ${CONTAINER_NAME} --restart=unless-stopped \
+    -p ${PORT}:8080 \
+    -v ${CONF_PATH}:/usr/local/bepusdt/conf.toml \
+    -v ${DB_PATH}:/var/lib/bepusdt/sqlite.db \
+    ${IMAGE_NAME}
+
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}容器已启动成功！端口: ${PORT}${RESET}"
     else
-        if systemctl is-active --quiet hysteria-server.service; then
-            echo -e "${green}运行中${re}"
-            port=$(grep -Po '(?<=listen: :)[0-9]+' /etc/hysteria/config.yaml)
-            echo -e "${green}监听端口: $port${re}"
-        else
-            echo -e "${green}未运行${re}"
-        fi
+        echo -e "${RED}容器启动失败，请检查配置！${RESET}"
     fi
-    echo
-    read -p "按回车返回菜单..."
 }
 
-show_client_config() {
-    echo
-    if [ -f "/etc/alpine-release" ]; then
-        port=$(grep -Po '(?<=listen: :)[0-9]+' /root/config.yaml)
-    else
-        port=$(grep -Po '(?<=listen: :)[0-9]+' /etc/hysteria/config.yaml)
-    fi
-    ip=$(curl -s https://api.ipify.org)
-    echo -e "${green}服务器 IP: $ip${re}"
-    echo -e "${green}服务器端口: $port${re}"
-    echo -e "${green}协议: hysteria${re}"
-    echo
-    read -p "按回车返回菜单..."
+stop_container() {
+    docker stop ${CONTAINER_NAME} && echo -e "${GREEN}容器已停止${RESET}"
 }
 
-# ================== 主菜单 ==================
+restart_container() {
+    docker restart ${CONTAINER_NAME} && echo -e "${GREEN}容器已重启${RESET}"
+}
+
+remove_container() {
+    docker rm -f ${CONTAINER_NAME} && echo -e "${GREEN}容器已删除${RESET}"
+}
+
+status_container() {
+    docker ps -a --filter "name=${CONTAINER_NAME}"
+}
+
+# ================== 菜单 ==================
+
 while true; do
-    clear
-    echo "--------------"
-    echo -e "${green}1. 安装 Hysteria2${re}"
-    echo -e "${green}2. 查看 Hysteria2状态${re}"
-    echo -e "${green}3. 更换 Hysteria2端口${re}"
-    echo -e "${green}4. 卸载 Hysteria2${re}"
-    echo -e "${green}0. 退出${re}"
-    echo "--------------"
+    echo -e "\n${GREEN}====== BEPUSDT 容器管理 ======${RESET}"
+    echo -e "${GREEN}1) 启动容器 / 检测容器是否存在${RESET}"
+    echo -e "${GREEN}2) 停止容器${RESET}"
+    echo -e "${GREEN}3) 重启容器${RESET}"
+    echo -e "${GREEN}4) 删除容器${RESET}"
+    echo -e "${GREEN}5) 查看状态${RESET}"
+    echo -e "${GREEN}0) 退出${RESET}"
+    read -p "请选择操作: " choice
 
-    read -p $'\033[1;32m请输入你的选择: \033[0m' sub_choice
-    case $sub_choice in
-        1)
-            clear
-            port=$(random_port)
-            port=$(check_udp_port $port)
-
-            open_firewall_port $port
-
-            if [ -f "/etc/alpine-release" ]; then
-                SERVER_PORT=$port bash -c "$(curl -fsSL https://raw.githubusercontent.com/iu683/star/main/hy2.sh)"
-            else
-                HY2_PORT=$port bash -c "$(curl -fsSL https://raw.githubusercontent.com/iu683/star/main/azHysteria2.sh)"
-            fi
-
-            echo -e "${green}Hysteria2 安装完成！端口: $port${re}"
-            show_client_config
-            ;;
-        2)
-            show_status
-            ;;
-        3)
-            clear
-            new_port=$(random_port)
-            new_port=$(check_udp_port $new_port)
-
-            open_firewall_port $new_port
-
-            if [ -f "/etc/alpine-release" ]; then
-                sed -i "s/^listen: :[0-9]*/listen: :$new_port/" /root/config.yaml
-                pkill -f '[w]eb'
-                nohup ./web server config.yaml >/dev/null 2>&1 &
-            else
-                sed -i "s/^listen: :[0-9]*/listen: :$new_port/" /etc/hysteria/config.yaml
-                systemctl restart hysteria-server.service
-            fi
-            echo -e "${green}Hysteria2端口已更换成 $new_port${re}"
-            show_client_config
-            ;;
-        4)
-            clear
-            if [ -f "/etc/alpine-release" ]; then
-                pkill -f '[w]eb'
-                pkill -f '[n]pm'
-                cd && rm -rf web npm server.crt server.key config.yaml
-            else
-                systemctl stop hysteria-server.service
-                rm -f /usr/local/bin/hysteria
-                rm -f /etc/systemd/system/hysteria-server.service
-                rm -f /etc/hysteria/config.yaml
-                systemctl daemon-reload
-            fi
-            echo -e "${green}Hysteria2 已彻底卸载${re}"
-            sleep 1
-            ;;
-        0)
-            echo -e "${green}已退出脚本${re}"
-            exit 0
-            ;;
-        *)
-            echo -e "${green}无效的输入！${re}"
-            sleep 1
-            ;;
+    case $choice in
+        1) start_container ;;
+        2) stop_container ;;
+        3) restart_container ;;
+        4) remove_container ;;
+        5) status_container ;;
+        0) exit 0 ;;
+        *) echo -e "${RED}无效选择，返回菜单${RESET}" ;;
     esac
 done
