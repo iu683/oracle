@@ -3,8 +3,10 @@
 # ================== 颜色定义 ==================
 GREEN="\033[32m"
 RED="\033[31m"
-YELLOW="\033[33m"
 RESET="\033[0m"
+
+# ================== 安装目录 ==================
+INSTALL_DIR="/www/wwwroot/mcy-shop"
 
 # ================== 检查 root ==================
 if [ "$EUID" -ne 0 ]; then
@@ -12,14 +14,11 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# ================== 安装目录 ==================
-INSTALL_DIR="/www/wwwroot/mcy-shop"
-
 # ================== 检查服务状态 ==================
 check_status() {
     cd "$INSTALL_DIR"
-    STATUS=$(mcy service.restart 2>&1)
-    if echo "$STATUS" | grep -qi "successfully"; then
+    STATUS=$(mcy service.start 2>&1 | grep -i "already running")
+    if [ -n "$STATUS" ]; then
         echo -e "${GREEN}服务状态: 运行中${RESET}"
     else
         echo -e "${GREEN}服务状态: 未启动${RESET}"
@@ -28,30 +27,30 @@ check_status() {
 
 # ================== 菜单函数 ==================
 show_menu() {
-    echo "${GREEN}=================== MCY 全功能管理菜单 ===================${RESET}"
+    echo -e "${GREEN}=================== MCY 全功能管理菜单 ===================${RESET}"
     check_status
-    echo "${GREEN}1.  启动服务${RESET}"
-    echo "${GREEN}2.  停止服务${RESET}"
-    echo "${GREEN}3.  重启服务${RESET}"
-    echo "${GREEN}4.  卸载服务${RESET}"
-    echo "${GREEN}5.  安装服务${RESET}"
-    echo "${GREEN}6.  更新系统${RESET}"
-    echo "${GREEN}7.  生成数据库模型${RESET}"
-    echo "${GREEN}8.  创建语言包${RESET}"
-    echo "${GREEN}9.  删除语言包${RESET}"
-    echo "${GREEN}10. 批量删除语言包${RESET}"
-    echo "${GREEN}11. 查看语言代码${RESET}"
-    echo "${GREEN}12. 压缩 JS${RESET}"
-    echo "${GREEN}13. 压缩 CSS${RESET}"
-    echo "${GREEN}14. 压缩 JS+CSS${RESET}"
-    echo "${GREEN}15. 停止插件${RESET}"
-    echo "${GREEN}16. 查看运行插件${RESET}"
-    echo "${GREEN}17. 重置超级管理员密码${RESET}"
-    echo "${GREEN}18. 添加 Composer 依赖${RESET}"
-    echo "${GREEN}19. 删除 Composer 依赖${RESET}"
-    echo "${GREEN}20. 导入异次元 V3 用户数据${RESET}"
-    echo "${GREEN}21. 退出${RESET}"
-    echo "${GREEN}==========================================================${RESET}"
+    echo -e "${GREEN}1.  启动服务${RESET}"
+    echo -e "${GREEN}2.  停止服务${RESET}"
+    echo -e "${GREEN}3.  重启服务${RESET}"
+    echo -e "${GREEN}4.  卸载服务${RESET}"
+    echo -e "${GREEN}5.  安装服务${RESET}"
+    echo -e "${GREEN}6.  更新系统${RESET}"
+    echo -e "${GREEN}7.  生成数据库模型${RESET}"
+    echo -e "${GREEN}8.  创建语言包${RESET}"
+    echo -e "${GREEN}9.  删除语言包${RESET}"
+    echo -e "${GREEN}10. 批量删除语言包${RESET}"
+    echo -e "${GREEN}11. 查看语言代码${RESET}"
+    echo -e "${GREEN}12. 压缩 JS${RESET}"
+    echo -e "${GREEN}13. 压缩 CSS${RESET}"
+    echo -e "${GREEN}14. 压缩 JS+CSS${RESET}"
+    echo -e "${GREEN}15. 停止插件${RESET}"
+    echo -e "${GREEN}16. 查看运行插件${RESET}"
+    echo -e "${GREEN}17. 重置超级管理员密码${RESET}"
+    echo -e "${GREEN}18. 添加 Composer 依赖${RESET}"
+    echo -e "${GREEN}19. 删除 Composer 依赖${RESET}"
+    echo -e "${GREEN}20. 导入异次元 V3 用户数据${RESET}"
+    echo -e "${GREEN}21. 退出${RESET}"
+    echo -e "${GREEN}==========================================================${RESET}"
     echo -ne "${GREEN}请选择操作 [1-21]: ${RESET}"
 }
 
@@ -60,24 +59,12 @@ while true; do
     show_menu
     read choice
     case $choice in
-        1)
-            cd "$INSTALL_DIR" && mcy service.start
-            ;;
-        2)
-            cd "$INSTALL_DIR" && mcy service.stop
-            ;;
-        3)
-            cd "$INSTALL_DIR" && mcy service.restart
-            ;;
-        4)
-            cd "$INSTALL_DIR" && mcy service.uninstall
-            ;;
-        5)
-            cd "$INSTALL_DIR" && mcy service.install
-            ;;
-        6)
-            cd "$INSTALL_DIR" && mcy kit.update
-            ;;
+        1) cd "$INSTALL_DIR" && mcy service.start ;;
+        2) cd "$INSTALL_DIR" && mcy service.stop ;;
+        3) cd "$INSTALL_DIR" && mcy service.restart ;;
+        4) cd "$INSTALL_DIR" && mcy service.uninstall ;;
+        5) cd "$INSTALL_DIR" && mcy service.install ;;
+        6) cd "$INSTALL_DIR" && mcy kit.update ;;
         7)
             echo -ne "请输入表名（空格隔开）: "
             read tables
@@ -104,18 +91,10 @@ while true; do
             read originals
             cd "$INSTALL_DIR" && mcy language.all.del $originals
             ;;
-        11)
-            cd "$INSTALL_DIR" && mcy language.code
-            ;;
-        12)
-            cd "$INSTALL_DIR" && mcy compress.js.merge
-            ;;
-        13)
-            cd "$INSTALL_DIR" && mcy compress.css.merge
-            ;;
-        14)
-            cd "$INSTALL_DIR" && mcy compress.all
-            ;;
+        11) cd "$INSTALL_DIR" && mcy language.code ;;
+        12) cd "$INSTALL_DIR" && mcy compress.js.merge ;;
+        13) cd "$INSTALL_DIR" && mcy compress.css.merge ;;
+        14) cd "$INSTALL_DIR" && mcy compress.all ;;
         15)
             echo -ne "请输入插件标识: "
             read plugin
