@@ -4,7 +4,6 @@
 GREEN="\033[32m"
 RED="\033[31m"
 YELLOW="\033[33m"
-CYAN="\033[36m"
 RESET="\033[0m"
 
 # ================== 检查 root ==================
@@ -19,29 +18,28 @@ INSTALL_DIR="/www/wwwroot/mcy-shop"
 # ================== 检查服务状态 ==================
 check_status() {
     cd "$INSTALL_DIR"
-    # 尝试重启不会真正执行，只是用来检测状态
     STATUS=$(mcy service.restart 2>&1)
     if echo "$STATUS" | grep -qi "successfully"; then
         echo -e "${GREEN}服务状态: 运行中${RESET}"
     else
-        echo -e "${RED}服务状态: 未启动${RESET}"
+        echo -e "${GREEN}服务状态: 未启动${RESET}"
     fi
 }
 
 # ================== 菜单函数 ==================
 show_menu() {
-    echo -e "${CYAN}"
+    echo -e "${GREEN}"
     echo "=================== MCY 全功能管理菜单 ==================="
     check_status
-    echo "1. 启动服务"
-    echo "2. 停止服务"
-    echo "3. 重启服务"
-    echo "4. 卸载服务"
-    echo "5. 安装服务"
-    echo "6. 更新系统"
-    echo "7. 生成数据库模型"
-    echo "8. 创建语言包"
-    echo "9. 删除语言包"
+    echo "1.  启动服务"
+    echo "2.  停止服务"
+    echo "3.  重启服务"
+    echo "4.  卸载服务"
+    echo "5.  安装服务"
+    echo "6.  更新系统"
+    echo "7.  生成数据库模型"
+    echo "8.  创建语言包"
+    echo "9.  删除语言包"
     echo "10. 批量删除语言包"
     echo "11. 查看语言代码"
     echo "12. 压缩 JS"
@@ -55,7 +53,7 @@ show_menu() {
     echo "20. 导入异次元 V3 用户数据"
     echo "21. 退出"
     echo "=========================================================="
-    echo -ne "${RESET}请选择操作 [1-21]: "
+    echo -ne "${GREEN}请选择操作 [1-21]: ${RESET}"
 }
 
 # ================== 主循环 ==================
@@ -152,13 +150,13 @@ while true; do
             cd "$INSTALL_DIR" && mcy migration.v3.user "$sqlfile"
             ;;
         21)
-            echo -e "${YELLOW}退出管理菜单${RESET}"
+            echo -e "${GREEN}退出管理菜单${RESET}"
             exit 0
             ;;
         *)
             echo -e "${RED}无效选项，请输入 1-21${RESET}"
             ;;
     esac
-    echo -e "\n${CYAN}操作完成，按 Enter 返回菜单...${RESET}"
+    echo -e "\n${GREEN}操作完成，按 Enter 返回菜单...${RESET}"
     read
 done
