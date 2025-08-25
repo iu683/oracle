@@ -14,6 +14,7 @@ RESET="\033[0m"
 INSTALL_DIR="/opt/dujiaoka"   # 可根据需要修改
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
 DATA_DIR="$INSTALL_DIR/data"
+VIEWS_DIR="$INSTALL_DIR/custom_views"
 
 # ===========================
 # 检查是否 root
@@ -24,8 +25,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # 创建安装目录
-mkdir -p "$INSTALL_DIR"
 mkdir -p "$DATA_DIR/mysql"
+mkdir -p "$VIEWS_DIR/common"
 
 # ===========================
 # 检查端口是否被占用
@@ -66,6 +67,8 @@ services:
     container_name: dujiaoka
     ports:
       - "${APP_PORT}:80"
+    volumes:
+      - $VIEWS_DIR:/app/resources/views
     environment:
       - APP_URL=${APP_URL}
       - ADMIN_HTTPS=true
@@ -103,8 +106,26 @@ install_dujiaoka() {
     read -rp "请输入数据库密码（默认 dujiaoka_password）: " DB_PASSWORD
     DB_PASSWORD=${DB_PASSWORD:-dujiaoka_password}
 
+    # 创建 docker-compose 文件
     create_compose_file
+
+    # 安装启动容器
     docker compose -f "$COMPOSE_FILE" up -d
+
+    # 自动修改 install.blade.php 第 769 行
+    INSTALL_FILE="$VIEWS_DIR/common/install.blade.php"
+    if [[ ! -f "$INSTALL_FILE" ]]; then
+        touch "$INSTALL_FILE"
+    fi
+    # 如果文件行数不足769行，先补充空行
+    LINE_COUNT=$(wc -l < "$INSTALL_FILE")
+    if (( LINE_COUNT < 769 )); then
+        for i in $((LINE_COUNT+1))..769; do
+            echo "" >> "$INSTALL_FILE"
+        done
+    fi
+    # 替换第 769 行
+    sed -i '769s|.*|<script src="/assets/hyper/js/jquery-3.4.1.min.js"></script>|' "$INSTALL_FILE"
 
     echo -e "${GREEN}DuJiaoka 安装并启动完成！${RESET}"
     echo -e "${GREEN}数据库信息:${RESET}"
@@ -116,6 +137,9 @@ install_dujiaoka() {
 
     echo -e "${GREEN}Redis 信息:${RESET}"
     echo -e "${YELLOW}Redis 地址: redis${RESET}"
+
+    echo -e "${GREEN}模板目录已挂载到宿主机: $VIEWS_DIR${RESET}"
+    echo -e "${GREEN}install.blade.php 第 769 行已修改为 jQuery 3.4.1${RESET}"
 }
 
 start_dujiaoka() {
