@@ -63,9 +63,10 @@ start_container() {
     read -p "请输入宿主机数据库文件路径 [默认: ${DEFAULT_DB_PATH}]: " DB_PATH
     DB_PATH=${DB_PATH:-$DEFAULT_DB_PATH}
 
-    read -p "请输入宿主机映射端口: " PORT
+    # 输入端口，支持默认 8080
+    read -p "请输入宿主机映射端口 [默认: 8080]: " PORT
+    PORT=${PORT:-8080}
     PORT=$(check_port $PORT)
-
     # 检查文件
     if [ ! -f "$CONF_PATH" ]; then
         echo -e "${RED}配置文件不存在: $CONF_PATH${RESET}"
