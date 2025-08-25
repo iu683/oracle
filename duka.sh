@@ -1,201 +1,163 @@
 #!/bin/bash
-# =====================================
-# Dujiaoka Docker 管理脚本（增强版完整版）
-# 支持持久化数据、自定义 APP_URL、后台自动跳转登录
-# =====================================
-set -e
 
+# ===========================
+# 颜色定义
+# ===========================
 GREEN="\033[32m"
-YELLOW="\033[33m"
 RED="\033[31m"
+YELLOW="\033[33m"
 RESET="\033[0m"
 
-INSTALL_DIR="$(pwd)"
+# ===========================
+# 安装路径（统一管理）
+# ===========================
+INSTALL_DIR="/opt/dujiaoka"   # 可根据需要修改
 COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
-DUJIAOKA_APP_NAME="dujiaoka"
+DATA_DIR="$INSTALL_DIR/data"
 
-# 默认数据库和 Redis 信息
-DB_HOST="mysql"
-DB_PORT=3306
-DB_NAME="dujiaoka"
-DB_USER="dujiaoka"
-DB_PASSWORD="dujiaoka_password"
-REDIS_HOST="redis"
-REDIS_PORT=6379
+# ===========================
+# 检查是否 root
+# ===========================
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${RED}请使用 root 用户运行此脚本！${RESET}"
+    exit 1
+fi
 
-APP_URL_DEFAULT="http://127.0.0.1:8080"
-APP_URL="$APP_URL_DEFAULT"
-ADMIN_ROUTE_PREFIX="/admin"
+# 创建安装目录
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$DATA_DIR/mysql"
 
-# ==============================
-# 自动生成 docker-compose.yml
-# ==============================
-generate_compose() {
+# ===========================
+# 检查端口是否被占用
+# ===========================
+check_port() {
+    local port=$1
+    while lsof -i :"$port" &>/dev/null; do
+        echo -e "${RED}端口 $port 已被占用，请输入其他端口！${RESET}"
+        read -rp "请输入前台访问端口: " port
+    done
+    echo "$port"
+}
+
+# ===========================
+# Docker Compose 文件生成
+# ===========================
+create_compose_file() {
 cat > "$COMPOSE_FILE" <<EOF
-version: "3.8"
-
+version: '3'
 services:
   mysql:
     image: mysql:5.7
-    container_name: dujiaoka_mysql
     environment:
-      MYSQL_DATABASE: $DB_NAME
-      MYSQL_USER: $DB_USER
-      MYSQL_PASSWORD: $DB_PASSWORD
-      MYSQL_ROOT_PASSWORD: $DB_PASSWORD
+      MYSQL_DATABASE: dujiaoka
+      MYSQL_USER: dujiaoka
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - ./data/mysql:/var/lib/mysql
+      - $DATA_DIR/mysql:/var/lib/mysql
     restart: always
 
   redis:
     image: redis:alpine
-    container_name: dujiaoka_redis
     restart: always
 
   dujiaoka:
     image: jiangjuhong/dujiaoka:latest
-    container_name: $DUJIAOKA_APP_NAME
+    container_name: dujiaoka
     ports:
-      - "8080:80"
+      - "${APP_PORT}:80"
     environment:
-      - APP_URL=$APP_URL
-      - ADMIN_HTTPS=$( [[ "$APP_URL" == https* ]] && echo true || echo false )
-      - ADMIN_ROUTE_PREFIX=$ADMIN_ROUTE_PREFIX
+      - APP_URL=${APP_URL}
+      - ADMIN_HTTPS=true
+      - ADMIN_ROUTE_PREFIX=/admin
       - WEB_DOCUMENT_ROOT=/app/public
       - TZ=Asia/Shanghai
-    volumes:
-      - ./data/dujiaoka:/app
     restart: always
 EOF
-echo -e "${GREEN}docker-compose.yml 已生成，APP_URL=$APP_URL，后台路由=$ADMIN_ROUTE_PREFIX${RESET}"
 }
 
-# ==============================
-# 检查 Docker 是否安装
-# ==============================
-check_docker() {
-    if ! command -v docker &>/dev/null; then
-        echo -e "${RED}Docker 未安装，请先安装 Docker${RESET}"
-        exit 1
-    fi
+# ===========================
+# 菜单函数
+# ===========================
+show_menu() {
+    echo -e "${GREEN}===== DuJiaoka Docker 管理脚本 =====${RESET}"
+    echo -e "${GREEN}1.${RESET} 安装并启动 DuJiaoka"
+    echo -e "${GREEN}2.${RESET} 启动服务"
+    echo -e "${GREEN}3.${RESET} 停止服务"
+    echo -e "${GREEN}4.${RESET} 重启服务"
+    echo -e "${GREEN}5.${RESET} 查看服务状态"
+    echo -e "${GREEN}6.${RESET} 卸载 DuJiaoka（删除全部数据）"
+    echo -e "${GREEN}0.${RESET} 退出"
 }
 
-# ==============================
-# 启动容器
-# ==============================
-start() {
-    # 用户输入 APP_URL
-    read -p "请输入 APP_URL（默认 $APP_URL_DEFAULT）: " input_url
-    if [[ -n "$input_url" ]]; then APP_URL="$input_url"; fi
+# ===========================
+# 功能函数
+# ===========================
+install_dujiaoka() {
+    read -rp "请输入你的域名（例如 https://example.com）: " APP_URL
 
-    # 用户输入后台路径
-    read -p "请输入后台路由前缀（默认 /admin）: " input_admin
-    if [[ -n "$input_admin" ]]; then ADMIN_ROUTE_PREFIX="$input_admin"; fi
+    read -rp "请输入前台访问端口（默认 8080）: " APP_PORT
+    APP_PORT=${APP_PORT:-8080}
+    APP_PORT=$(check_port "$APP_PORT")
 
-    echo -e "${YELLOW}请确保域名已反代到本机 8080 端口，HTTPS 可选${RESET}"
+    read -rp "请输入数据库密码（默认 dujiaoka_password）: " DB_PASSWORD
+    DB_PASSWORD=${DB_PASSWORD:-dujiaoka_password}
 
-    generate_compose
-
-    echo -e "${GREEN}启动 Dujiaoka 容器...${RESET}"
+    create_compose_file
     docker compose -f "$COMPOSE_FILE" up -d
-    echo -e "${GREEN}启动完成！${RESET}"
 
-    show_access
-    show_db_info
+    echo -e "${GREEN}DuJiaoka 安装并启动完成！${RESET}"
+    echo -e "${GREEN}数据库信息:${RESET}"
+    echo -e "${YELLOW}数据库地址: mysql${RESET}"
+    echo -e "${YELLOW}端口: 3306${RESET}"
+    echo -e "${YELLOW}数据库名称: dujiaoka${RESET}"
+    echo -e "${YELLOW}用户名: dujiaoka${RESET}"
+    echo -e "${YELLOW}密码: ${DB_PASSWORD}${RESET}"
+
+    echo -e "${GREEN}Redis 信息:${RESET}"
+    echo -e "${YELLOW}Redis 地址: redis${RESET}"
 }
 
-# ==============================
-# 停止容器
-# ==============================
-stop() {
-    echo -e "${YELLOW}停止 Dujiaoka 容器...${RESET}"
+start_dujiaoka() {
+    docker compose -f "$COMPOSE_FILE" up -d
+    echo -e "${GREEN}服务已启动！${RESET}"
+}
+
+stop_dujiaoka() {
     docker compose -f "$COMPOSE_FILE" down
-    echo -e "${YELLOW}已停止${RESET}"
+    echo -e "${RED}服务已停止！${RESET}"
 }
 
-# ==============================
-# 重启容器
-# ==============================
-restart() {
-    stop
-    start
+restart_dujiaoka() {
+    docker compose -f "$COMPOSE_FILE" down
+    docker compose -f "$COMPOSE_FILE" up -d
+    echo -e "${GREEN}服务已重启！${RESET}"
 }
 
-# ==============================
-# 查看日志
-# ==============================
-logs() {
-    docker logs -f "$DUJIAOKA_APP_NAME"
+status_dujiaoka() {
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 }
 
-# ==============================
-# 卸载容器和数据
-# ==============================
-uninstall() {
-    echo -e "${RED}即将卸载 Dujiaoka 并删除数据！${RESET}"
-    read -p "确定吗？(y/N): " confirm
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        docker compose -f "$COMPOSE_FILE" down -v
-        echo -e "${RED}已卸载${RESET}"
-    else
-        echo -e "${YELLOW}已取消卸载${RESET}"
-    fi
+uninstall_dujiaoka() {
+    docker compose -f "$COMPOSE_FILE" down
+    rm -rf "$INSTALL_DIR"
+    echo -e "${RED}DuJiaoka 已彻底卸载，所有数据已清除！${RESET}"
 }
 
-# ==============================
-# 显示访问地址（增强版自动后台 URL）
-# ==============================
-show_access() {
-    local ip
-    ip=$(hostname -I | awk '{print $1}')
-    echo -e "${GREEN}网站访问地址: $APP_URL${RESET}"
-    echo -e "${GREEN}局域网访问: http://$ip:8080${RESET}"
-    echo -e "${GREEN}后台登录地址: $APP_URL$ADMIN_ROUTE_PREFIX/auth/login${RESET}"
-}
-
-# ==============================
-# 显示数据库和 Redis 信息
-# ==============================
-show_db_info() {
-    echo -e "\n${YELLOW}=== 数据库信息 ===${RESET}"
-    echo -e "${GREEN}数据库地址: $DB_HOST${RESET}"
-    echo -e "${GREEN}端口: $DB_PORT${RESET}"
-    echo -e "${GREEN}数据库名称: $DB_NAME${RESET}"
-    echo -e "${GREEN}用户名: $DB_USER${RESET}"
-    echo -e "${GREEN}密码: $DB_PASSWORD${RESET}"
-
-    echo -e "\n${YELLOW}=== Redis 信息 ===${RESET}"
-    echo -e "${GREEN}Redis 地址: $REDIS_HOST${RESET}"
-    echo -e "${GREEN}端口: $REDIS_PORT${RESET}"
-}
-
-# ==============================
-# 管理菜单
-# ==============================
-menu() {
-    while true; do
-        echo -e "\n${GREEN}=== Dujiaoka Docker 管理菜单 ===${RESET}"
-        echo -e "1) 启动服务"
-        echo -e "2) 停止服务"
-        echo -e "3) 重启服务"
-        echo -e "4) 查看日志"
-        echo -e "5) 卸载 Dujiaoka"
-        echo -e "0) 退出"
-        read -p "请输入选项: " choice
-        case "$choice" in
-            1) start ;;
-            2) stop ;;
-            3) restart ;;
-            4) logs ;;
-            5) uninstall ;;
-            0) exit 0 ;;
-            *) echo -e "${RED}无效选择，请重新输入！${RESET}" ;;
-        esac
-    done
-}
-
-# ==============================
-# 主程序
-# ==============================
-check_docker
-menu
+# ===========================
+# 主循环
+# ===========================
+while true; do
+    show_menu
+    read -rp "请输入选项: " choice
+    case $choice in
+        1) install_dujiaoka ;;
+        2) start_dujiaoka ;;
+        3) stop_dujiaoka ;;
+        4) restart_dujiaoka ;;
+        5) status_dujiaoka ;;
+        6) uninstall_dujiaoka ;;
+        0) exit 0 ;;
+        *) echo -e "${RED}无效选项，请重新输入！${RESET}" ;;
+    esac
+done
