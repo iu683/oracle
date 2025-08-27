@@ -36,7 +36,7 @@ create_container() {
     ENDPORT=35000
     IPV6="N"
     SYSTEM="debian"
-    DISK=""
+    DISK="5"
 
     # 交互式输入
     read -p "容器名称 [例如:$CONTAINER_NAME]: " input; [ -n "$input" ] && CONTAINER_NAME=$input
@@ -46,9 +46,9 @@ create_container() {
     read -p "SSH 端口 [例如:$SSHPORT]: " input; [ -n "$input" ] && SSHPORT=$input
     read -p "端口范围开始 [例如:$STARTPORT]: " input; [ -n "$input" ] && STARTPORT=$input
     read -p "端口范围结束 [例如:$ENDPORT]: " input; [ -n "$input" ] && ENDPORT=$input
-    read -p "独立 IPv6 地址 [例如:$IPV6]: " input; [ -n "$input" ] && IPV6=$input
+    read -p "独立 IPv6地址 [默认$IPV6]: " input; [ -n "$input" ] && IPV6=$input
     read -p "系统类型 [例如:$SYSTEM]: " input; [ -n "$input" ] && SYSTEM=$input
-    read -p "硬盘大小 GB [例如:$DISK]: " input; [ -n "$input" ] && DISK=$input
+    read -p "硬盘大小GB [$DISK]: " input; [ -n "$input" ] && DISK=$input
 
     # 下载脚本并执行
     download_onedocker
