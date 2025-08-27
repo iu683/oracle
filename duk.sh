@@ -1,169 +1,225 @@
 #!/bin/bash
+# =========================================================
+# Incus 一键管理脚本（绿色无边框版）
+# =========================================================
 
-# ===========================
 # 颜色定义
-# ===========================
-GREEN="\033[32m"
-RED="\033[31m"
-YELLOW="\033[33m"
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+PURPLE="\033[0;35m"
+SKYBLUE="\033[0;36m"
+WHITE="\033[1;37m"
 RESET="\033[0m"
 
-# ===========================
-# 安装路径（统一管理）
-# ===========================
-INSTALL_DIR="/opt/dujiaoka"   # 可根据需要修改
-COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
-DATA_DIR="$INSTALL_DIR/data"
-VIEWS_DIR="$INSTALL_DIR/custom_views"
+# =========================================================
+# 工具函数
+# =========================================================
+pause(){
+    echo -e "${YELLOW}按任意键返回菜单...${RESET}"
+    read -n 1
+}
 
-# ===========================
-# 检查是否 root
-# ===========================
-if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}请使用 root 用户运行此脚本！${RESET}"
-    exit 1
-fi
-
-# 创建安装目录
-mkdir -p "$DATA_DIR/mysql"
-mkdir -p "$VIEWS_DIR"
-
-# ===========================
-# 检查端口是否被占用
-# ===========================
-check_port() {
-    local port=$1
-    while lsof -i :"$port" &>/dev/null; do
-        echo -e "${RED}端口 $port 已被占用，请输入其他端口！${RESET}"
-        read -rp "请输入前台访问端口: " port
+check_log(){
+    for f in ./log /root/log /var/log/incus.log; do
+        if [ -f "$f" ]; then
+            grep -v -E "$(incus list -c n --format csv | paste -sd'|' -)" "$f"
+            return
+        fi
     done
-    echo "$port"
+    echo -e "${YELLOW}未找到 log 文件，请稍后再试${RESET}"
 }
 
-# ===========================
-# Docker Compose 文件生成
-# ===========================
-create_compose_file() {
-cat > "$COMPOSE_FILE" <<EOF
-version: '3'
-services:
-  mysql:
-    image: mysql:5.7
-    environment:
-      MYSQL_DATABASE: dujiaoka
-      MYSQL_USER: dujiaoka
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - $DATA_DIR/mysql:/var/lib/mysql
-    restart: always
-
-  redis:
-    image: redis:alpine
-    restart: always
-
-  dujiaoka:
-    image: jiangjuhong/dujiaoka:latest
-    container_name: dujiaoka
-    ports:
-      - "${APP_PORT}:80"
-    volumes:
-      - $VIEWS_DIR:/app/resources/views
-    environment:
-      - APP_URL=${APP_URL}
-      - ADMIN_HTTPS=true
-      - ADMIN_ROUTE_PREFIX=/admin
-      - WEB_DOCUMENT_ROOT=/app/public
-      - TZ=Asia/Shanghai
-    restart: always
-EOF
+install_pkg(){
+    pkg=$1
+    if ! command -v $pkg >/dev/null 2>&1; then
+        echo -e "${YELLOW}正在安装依赖：$pkg${RESET}"
+        if command -v apt >/dev/null 2>&1; then
+            apt update && apt install -y $pkg
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y $pkg
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y $pkg
+        elif command -v apk >/dev/null 2>&1; then
+            apk add --no-cache $pkg
+        fi
+    fi
 }
 
-# ===========================
-# 菜单函数
-# ===========================
-show_menu() {
-    echo -e "${GREEN}===== DuJiaoka Docker 管理脚本 =====${RESET}"
-    echo -e "${GREEN}1.安装并启动 DuJiaoka${RESET}"
-    echo -e "${GREEN}2.启动服务${RESET}"
-    echo -e "${GREEN}3.停止服务${RESET}"
-    echo -e "${GREEN}4.重启服务${RESET}"
-    echo -e "${GREEN}5.查看服务状态${RESET}"
-    echo -e "${GREEN}6.卸载 DuJiaoka（删除全部数据${RESET}）"
-    echo -e "${GREEN}0.退出${RESET}"
+# =========================================================
+# 安装和开设 Incus
+# =========================================================
+install_incus(){
+    echo -e "${YELLOW}开始进行环境检测...${RESET}"
+    install_pkg wget
+
+    output=$(bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/oneclickvirt/incus/main/scripts/pre_check.sh))
+    echo "$output"
+
+    if echo "$output" | grep -q "本机符合作为incus母鸡的要求"; then
+        echo -e "${GREEN}你的 VPS 符合要求，可以开设 incus 容器${RESET}"
+
+        read -p $'\033[1;32m确定要安装并开设 incus 小鸡吗？ [y/n]: \033[0m' confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}开始安装 Incus 主体...${RESET}"
+            sleep 1
+            curl -L https://raw.githubusercontent.com/oneclickvirt/incus/main/scripts/incus_install.sh -o incus_install.sh
+            chmod +x incus_install.sh
+            bash incus_install.sh
+
+            if command -v incus >/dev/null 2>&1; then
+                echo -e "${GREEN}Incus 已安装完成${RESET}"
+            else
+                echo -e "${RED}Incus 安装失败，请更新系统后重试${RESET}"
+                rm -f incus_install.sh
+                return
+            fi
+        fi
+    else
+        echo -e "${RED}检测未通过，无法安装 Incus${RESET}"
+    fi
+}
+       
+
+# =========================================================
+# 管理 Incus 小鸡
+# =========================================================
+manage_incus(){
+    while true; do
+        clear
+        echo -e "${GREEN}   管理 incus 小鸡${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        echo -e "${GREEN}1. 查看所有小鸡状态${RESET}"
+        echo -e "${GREEN}2. 暂停所有小鸡${RESET}"
+        echo -e "${GREEN}3. 启动所有小鸡${RESET}"
+        echo -e "${GREEN}4. 暂停指定小鸡${RESET}"
+        echo -e "${GREEN}5. 启动指定小鸡${RESET}"
+        echo -e "${GREEN}6. 新增开设小鸡${RESET}"
+        echo -e "${RED}7. 删除指定小鸡${RESET}"
+        echo -e "${RED}8. 删除所有小鸡和配置${RESET}"
+        echo -e "${GREEN}0. 返回主菜单${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        read -p "请输入你的选择: " sub_choice
+
+        case $sub_choice in
+            1)
+                incus list
+                check_log
+                pause
+                ;;
+            2)
+                incus stop --all
+                echo -e "${GREEN}已暂停所有小鸡${RESET}"
+                pause
+                ;;
+            3)
+                incus start --all
+                echo -e "${GREEN}已启动所有小鸡${RESET}"
+                pause
+                ;;
+            4)
+                read -p "请输入小鸡名: " name
+                if incus stop "$name" 2>/dev/null; then
+                    echo -e "${GREEN}$name 已暂停${RESET}"
+                else
+                    echo -e "${RED}小鸡 $name 不存在${RESET}"
+                fi
+                pause
+                ;;
+            5)
+                read -p "请输入小鸡名: " name
+                if incus start "$name" 2>/dev/null; then
+                    echo -e "${GREEN}$name 已启动${RESET}"
+                else
+                    echo -e "${RED}小鸡 $name 不存在${RESET}"
+                fi
+                pause
+                ;;
+            6)
+                install_pkg screen
+                curl -L https://github.com/oneclickvirt/incus/raw/main/scripts/add_more.sh -o add_more.sh
+                chmod +x add_more.sh
+                screen bash add_more.sh
+                check_log
+                pause
+                ;;
+            7)
+                read -p "请输入要删除的小鸡名: " name
+                # 停止小鸡
+                incus stop "$name" 2>/dev/null
+                # 删除小鸡并清理目录
+                if incus delete -f "$name" 2>/dev/null; then
+                    rm -rf "$name" "${name}_v6"
+                    echo -e "${GREEN}$name 已删除，并清理相关目录${RESET}"
+                else
+                    echo -e "${RED}删除失败：小鸡 $name 不存在或已删除${RESET}"
+                fi
+                pause
+                ;;
+            8)
+                read -p $'\033[1;35m删除后无法恢复，确定要继续删除所有 incus 小鸡吗 [y/n]: \033[0m' confirm
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    # 删除所有小鸡
+                    incus list -c n --format csv | xargs -r -I {} incus delete -f {}
+
+                    # 删除系统临时文件和缓存（慎用）
+                    sudo find /var/log -type f -delete
+                    sudo find /var/tmp -type f -delete
+                    sudo find /tmp -type f -delete
+                    sudo find /var/cache/apt/archives -type f -delete
+
+                    # 删除脚本和配置文件
+                    rm -f /usr/local/bin/ssh_sh.sh \
+                          /usr/local/bin/config.sh \
+                          /usr/local/bin/ssh_bash.sh \
+                          /usr/local/bin/check-dns.sh \
+                          /root/ssh_sh.sh \
+                          /root/config.sh \
+                          /root/ssh_bash.sh \
+                          /root/buildone.sh \
+                          /root/add_more.sh \
+                          /root/build_ipv6_network.sh
+
+                    echo -e "${GREEN}已删除所有 incus 小鸡及相关文件${RESET}"
+                else
+                    echo -e "${YELLOW}已取消删除${RESET}"
+                fi
+                pause
+                ;;
+            0)
+                break
+                ;;
+            *)
+                echo -e "${RED}无效选择${RESET}"
+                pause
+                ;;
+        esac
+    done
 }
 
-# ===========================
-# 功能函数
-# ===========================
-install_dujiaoka() {
-    read -rp "请输入你的域名（例如 https://example.com）: " APP_URL
 
-    read -rp "请输入前台访问端口（默认 8080）: " APP_PORT
-    APP_PORT=${APP_PORT:-8080}
-    APP_PORT=$(check_port "$APP_PORT")
-
-    read -rp "请输入数据库密码（默认 dujiaoka_password）: " DB_PASSWORD
-    DB_PASSWORD=${DB_PASSWORD:-dujiaoka_password}
-
-    create_compose_file
-    docker compose -f "$COMPOSE_FILE" up -d
-
-    echo -e "${GREEN}DuJiaoka 安装并启动完成！${RESET}"
-    echo -e "${GREEN}数据库信息:${RESET}"
-    echo -e "${YELLOW}数据库地址: mysql${RESET}"
-    echo -e "${YELLOW}端口: 3306${RESET}"
-    echo -e "${YELLOW}数据库名称: dujiaoka${RESET}"
-    echo -e "${YELLOW}用户名: dujiaoka${RESET}"
-    echo -e "${YELLOW}密码: ${DB_PASSWORD}${RESET}"
-
-    echo -e "${GREEN}Redis 信息:${RESET}"
-    echo -e "${YELLOW}Redis 地址: redis${RESET}"
-
-    echo -e "${GREEN}模板目录已挂载到宿主机: $VIEWS_DIR${RESET}"
-    echo -e "${GREEN}你可以在此目录修改 resources/views 文件，修改立即生效${RESET}"
+# =========================================================
+# 主菜单
+# =========================================================
+main_menu(){
+    while true; do
+        clear
+        echo -e "${GREEN} Incus 管理脚本${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        echo -e "${GREEN}1. 开设SWAP${RESET}"
+        echo -e "${GREEN}2. 安装incus${RESET}"
+        echo -e "${GREEN}3. 管理 incus 小鸡${RESET}"
+        echo -e "${GREEN}0. 退出${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        read -p "请输入你的选择: " choice
+        case $choice in
+            1) curl -L https://raw.githubusercontent.com/oneclickvirt/incus/main/scripts/swap.sh -o swap.sh && chmod +x swap.sh && bash swap.sh ;;
+            2) install_incus ;;
+            3) manage_incus ;;
+            0) exit 0 ;;
+            *) echo -e "${RED}无效选择${RESET}" ; pause ;;
+        esac
+    done
 }
 
-start_dujiaoka() {
-    docker compose -f "$COMPOSE_FILE" up -d
-    echo -e "${GREEN}服务已启动！${RESET}"
-}
-
-stop_dujiaoka() {
-    docker compose -f "$COMPOSE_FILE" down
-    echo -e "${RED}服务已停止！${RESET}"
-}
-
-restart_dujiaoka() {
-    docker compose -f "$COMPOSE_FILE" down
-    docker compose -f "$COMPOSE_FILE" up -d
-    echo -e "${GREEN}服务已重启！${RESET}"
-}
-
-status_dujiaoka() {
-    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-}
-
-uninstall_dujiaoka() {
-    docker compose -f "$COMPOSE_FILE" down
-    rm -rf "$INSTALL_DIR"
-    echo -e "${RED}DuJiaoka 已彻底卸载，所有数据已清除！${RESET}"
-}
-
-# ===========================
-# 主循环
-# ===========================
-while true; do
-    show_menu
-    read -rp "请输入选项: " choice
-    case $choice in
-        1) install_dujiaoka ;;
-        2) start_dujiaoka ;;
-        3) stop_dujiaoka ;;
-        4) restart_dujiaoka ;;
-        5) status_dujiaoka ;;
-        6) uninstall_dujiaoka ;;
-        0) exit 0 ;;
-        *) echo -e "${RED}无效选项，请重新输入！${RESET}" ;;
-    esac
-done
+main_menu
