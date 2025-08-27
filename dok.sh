@@ -110,9 +110,7 @@ EOF
     update-alternatives --set iptables /usr/sbin/iptables-legacy
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
     restart_docker
-    else
-        echo -e "${YELLOW}⚠️ Docker 已安装${RESET}"
-    fi
+    echo -e "${YELLOW}⚠️ Docker 已安装${RESET}"
 }
 
 docker_update() {
