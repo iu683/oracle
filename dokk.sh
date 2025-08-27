@@ -509,7 +509,7 @@ main_menu() {
         echo -e "${GREEN}12. Docker 备份/恢复${RESET}"
         echo -e "${GREEN}13. 卷管理 ${RESET}"
         echo -e "${GREEN}14. 一键清理所有未使用容器/镜像/卷${RESET}"
-        echo -e "${YELLOW}15.重启 Docke${RESET}r"
+        echo -e "${YELLOW}15. 重启 Docke${RESET}r"
         echo -e "${GREEN}0. 退出${RESET}"
 
         read -p "请选择: " choice
