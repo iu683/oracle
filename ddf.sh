@@ -1,149 +1,143 @@
 #!/bin/bash
+# =========================================================
+# Incus 一键管理脚本（绿色无边框版）
+# =========================================================
 
-# ================== 颜色 ==================
-GREEN="\033[32m"
-RED="\033[31m"
-YELLOW="\033[33m"
+# 颜色定义
+RED="\033[0;31m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+PURPLE="\033[0;35m"
+SKYBLUE="\033[0;36m"
+WHITE="\033[1;37m"
 RESET="\033[0m"
 
-CONTAINER_NAME="bepusdt"
-IMAGE_NAME="v03413/bepusdt:latest"
+# =========================================================
+# 工具函数
+# =========================================================
+pause(){
+    echo -e "${YELLOW}按任意键返回菜单...${RESET}"
+    read -n 1
+}
 
-# 默认路径
-DEFAULT_CONF_PATH="/root/bepusdt/conf.toml"
-DEFAULT_DB_PATH="/root/bepusdt/sqlite.db"
-
-# ================== 检查 root ==================
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}请使用 root 用户运行此脚本！${RESET}"
-    exit 1
-fi
-
-# ================== 函数 ==================
-
-check_port() {
-    local port=$1
-    while lsof -i :"$port" >/dev/null 2>&1; do
-        echo -e "${YELLOW}端口 $port 已被占用，请输入新的端口: ${RESET}"
-        read port
+check_log(){
+    for f in ./log /root/log /var/log/incus.log; do
+        if [ -f "$f" ]; then
+            cat "$f"
+            return
+        fi
     done
-    echo $port
+    echo -e "${YELLOW}未找到 log 文件，请稍后再试${RESET}"
 }
 
-start_container() {
-    if [ "$(docker ps -a -q -f name=^/${CONTAINER_NAME}$)" ]; then
-        echo -e "${YELLOW}容器 ${CONTAINER_NAME} 已存在${RESET}"
-        echo "请选择操作："
-        echo "1) 重启容器"
-        echo "2) 更新镜像并重建容器"
-        echo "3) 删除容器并重新创建"
-        echo "0) 返回菜单"
-        read -p "选择: " opt
-        case $opt in
-            1)
-                docker restart ${CONTAINER_NAME} && echo -e "${GREEN}容器已重启${RESET}" ;;
-            2)
-                docker pull ${IMAGE_NAME}
-                docker rm -f ${CONTAINER_NAME}
-                echo -e "${GREEN}镜像已更新，容器已删除${RESET}" ;;
-            3)
-                docker rm -f ${CONTAINER_NAME} && echo -e "${GREEN}容器已删除${RESET}" ;;
-            0)
-                return ;;
-            *)
-                echo -e "${RED}无效选择，返回菜单${RESET}" ;;
-        esac
-    fi
-
-    # 输入配置文件路径，支持默认
-    read -p "请输入宿主机 conf.toml 配置文件路径 [默认: ${DEFAULT_CONF_PATH}]: " CONF_PATH
-    CONF_PATH=${CONF_PATH:-$DEFAULT_CONF_PATH}
-
-    # 输入数据库路径，支持默认
-    read -p "请输入宿主机数据库文件路径 [默认: ${DEFAULT_DB_PATH}]: " DB_PATH
-    DB_PATH=${DB_PATH:-$DEFAULT_DB_PATH}
-
-    # 输入端口，支持默认 8080
-    read -p "请输入宿主机映射端口 [默认: 8080]: " PORT
-    PORT=${PORT:-8080}
-    PORT=$(check_port $PORT)
-    # 检查文件
-    if [ ! -f "$CONF_PATH" ]; then
-        echo -e "${RED}配置文件不存在: $CONF_PATH${RESET}"
-        return
-    fi
-
-    if [ ! -f "$DB_PATH" ]; then
-        echo -e "${YELLOW}数据库文件不存在，启动后容器会自动创建: $DB_PATH${RESET}"
-    fi
-
-    # 启动容器
-    docker run -d --name ${CONTAINER_NAME} --restart=unless-stopped \
-    -p ${PORT}:8080 \
-    -v ${CONF_PATH}:/usr/local/bepusdt/conf.toml \
-    -v ${DB_PATH}:/var/lib/bepusdt/sqlite.db \
-    ${IMAGE_NAME}
-
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}容器已启动成功！端口: ${PORT}${RESET}"
-    else
-        echo -e "${RED}容器启动失败，请检查配置！${RESET}"
+install_pkg(){
+    pkg=$1
+    if ! command -v $pkg >/dev/null 2>&1; then
+        echo -e "${YELLOW}正在安装依赖：$pkg${RESET}"
+        if command -v apt >/dev/null 2>&1; then
+            apt update && apt install -y $pkg
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y $pkg
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y $pkg
+        elif command -v apk >/dev/null 2>&1; then
+            apk add --no-cache $pkg
+        fi
     fi
 }
 
-stop_container() {
-    docker stop ${CONTAINER_NAME} && echo -e "${GREEN}容器已停止${RESET}"
-}
+# =========================================================
+# 安装和开设 Incus
+# =========================================================
+install_incus(){
+    echo -e "${YELLOW}开始进行环境检测...${RESET}"
+    install_pkg wget
 
-restart_container() {
-    docker restart ${CONTAINER_NAME} && echo -e "${GREEN}容器已重启${RESET}"
-}
+    output=$(bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/oneclickvirt/incus/main/scripts/pre_check.sh))
+    echo "$output"
 
-remove_container() {
-    if [ "$(docker ps -a -q -f name=^/${CONTAINER_NAME}$)" ]; then
-        read -p "确认删除容器 ${CONTAINER_NAME} 并删除挂载的数据库文件吗？[y/N]: " confirm
+    if echo "$output" | grep -q "本机符合作为incus母鸡的要求"; then
+        echo -e "${GREEN}你的 VPS 符合要求，可以开设 incus 容器${RESET}"
+
+        read -p $'\033[1;32m确定要安装并开设 incus 小鸡吗？ [y/n]: \033[0m' confirm
         if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            docker rm -f ${CONTAINER_NAME} && echo -e "${GREEN}容器已删除${RESET}"
-            # 删除数据库文件
-            if [ -f "$DB_PATH" ]; then
-                rm -f "$DB_PATH" && echo -e "${GREEN}数据库文件已删除: $DB_PATH${RESET}"
+            echo -e "${YELLOW}开始安装 Incus 主体...${RESET}"
+            sleep 1
+            curl -L https://raw.githubusercontent.com/oneclickvirt/incus/main/scripts/incus_install.sh -o incus_install.sh
+            chmod +x incus_install.sh
+            bash incus_install.sh
+
+            if command -v incus >/dev/null 2>&1; then
+                echo -e "${GREEN}Incus 已安装完成${RESET}"
+            else
+                echo -e "${RED}Incus 安装失败，请更新系统后重试${RESET}"
+                rm -f incus_install.sh
+                return
             fi
-            # 删除配置文件（可选，通常不删除以防误操作）
-            # if [ -f "$CONF_PATH" ]; then
-            #     rm -f "$CONF_PATH" && echo -e "${GREEN}配置文件已删除: $CONF_PATH${RESET}"
-            # fi
-        else
-            echo "取消删除操作，返回菜单"
         fi
     else
-        echo -e "${YELLOW}容器 ${CONTAINER_NAME} 不存在${RESET}"
+        echo -e "${RED}检测未通过，无法安装 Incus${RESET}"
     fi
 }
+       
 
+# =========================================================
+# 管理 Incus 小鸡
+# =========================================================
+manage_incus(){
+    while true; do
+        clear
+        echo -e "${GREEN}   管理 incus 小鸡${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        echo -e "${GREEN}1. 查看所有小鸡状态${RESET}"
+        echo -e "${GREEN}2. 暂停所有小鸡${RESET}"
+        echo -e "${GREEN}3. 启动所有小鸡${RESET}"
+        echo -e "${GREEN}4. 暂停指定小鸡${RESET}"
+        echo -e "${GREEN}5. 启动指定小鸡${RESET}"
+        echo -e "${GREEN}6. 新增开设小鸡${RESET}"
+        echo -e "${GREEN}7. 删除指定小鸡${RESET}"
+        echo -e "${GREEN}8. 删除所有小鸡和配置${RESET}"
+        echo -e "${GREEN}0. 返回主菜单${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        read -p "请输入你的选择: " sub_choice
 
-status_container() {
-    docker ps -a --filter "name=${CONTAINER_NAME}"
+        case $sub_choice in
+            1) incus list ; check_log ; pause ;;
+            2) incus stop --all ; echo -e "${GREEN}已暂停${RESET}" ; pause ;;
+            3) incus start --all ; echo -e "${GREEN}已重启${RESET}" ; pause ;;
+            4) read -p "请输入小鸡名: " name ; incus stop $name ; incus info $name | grep Status ; echo -e "${GREEN}已暂停${RESET}" ;pause ;;
+            5) read -p "请输入小鸡名: " name ; incus start $name ; incus info $name | grep Status ; echo -e "${GREEN}已暂停${RESET}" ;pause ;;
+            6) install_pkg screen ; curl -L https://github.com/oneclickvirt/incus/raw/main/scripts/add_more.sh -o add_more.sh ; chmod +x add_more.sh ; screen bash add_more.sh ; check_log ; pause ;;
+            7) read -p "请输入要删除的小鸡名: " name ; incus delete -f $name ; echo -e "${GREEN}$name 已删除${RESET}" ; pause ;;
+            8) read -p "确定要删除所有小鸡吗? [y/n]: " confirm ; [[ "$confirm" =~ ^[Yy]$ ]] && incus list -c n --format csv | xargs -I {} incus delete -f {} ; rm -rf ~/.config/incus /var/snap/incus /var/lib/incus ; echo -e "${GREEN}已清理完成${RESET}" ; pause ;;
+            0) break ;;
+            *) echo -e "${RED}无效选择${RESET}" ; pause ;;
+        esac
+    done
 }
 
-# ================== 菜单 ==================
+# =========================================================
+# 主菜单
+# =========================================================
+main_menu(){
+    while true; do
+        clear
+        echo -e "${GREEN} Incus 管理脚本${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        echo -e "${GREEN}1. 开设SWAP${RESET}"
+        echo -e "${GREEN}2. 安装incus${RESET}"
+        echo -e "${GREEN}3. 管理 incus 小鸡${RESET}"
+        echo -e "${GREEN}0. 退出${RESET}"
+        echo -e "${GREEN}--------------------------------${RESET}"
+        read -p "请输入你的选择: " choice
+        case $choice in
+            1) curl -L https://raw.githubusercontent.com/oneclickvirt/incus/main/scripts/swap.sh -o swap.sh && chmod +x swap.sh && bash swap.sh ;;
+            2) install_incus ;;
+            3) manage_incus ;;
+            0) exit 0 ;;
+            *) echo -e "${RED}无效选择${RESET}" ; pause ;;
+        esac
+    done
+}
 
-while true; do
-    echo -e "\n${GREEN}====== BEPUSDT 容器管理 ======${RESET}"
-    echo -e "${GREEN}1) 启动容器 / 检测容器是否存在${RESET}"
-    echo -e "${GREEN}2) 停止容器${RESET}"
-    echo -e "${GREEN}3) 重启容器${RESET}"
-    echo -e "${GREEN}4) 删除容器${RESET}"
-    echo -e "${GREEN}5) 查看状态${RESET}"
-    echo -e "${GREEN}0) 退出${RESET}"
-    read -p "请选择操作: " choice
-
-    case $choice in
-        1) start_container ;;
-        2) stop_container ;;
-        3) restart_container ;;
-        4) remove_container ;;
-        5) status_container ;;
-        0) exit 0 ;;
-        *) echo -e "${RED}无效选择，返回菜单${RESET}" ;;
-    esac
-done
+main_menu
