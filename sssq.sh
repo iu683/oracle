@@ -156,9 +156,14 @@ show_main_menu() {
 
 
     # 当前日期时间显示在框下、菜单上
-    echo -e "${red}🖥️系统：${yellow}${system_name}${re} ｜ ${red}🌍 时区：${yellow}${timezone}${re} ｜ ${red}🈯 语言：${yellow}${language}${re} ｜ ${red}🧩 架构：${yellow}${cpu_arch}${re}"
+    # 系统信息显示（对齐版）
+    echo -e "${red}🖥️ 系统      ：${yellow}${system_name}${re}"
+    echo -e "${red}🌍 时区      ：${yellow}${timezone}${re}"
+    echo -e "${red}🈯 语言      ：${yellow}${language}${re}"
+    echo -e "${red}🧩 架构      ：${yellow}${cpu_arch}${re}"
+    echo -e "${red}🕒 当前时间  ：${yellow}${datetime}${re}\n"
+
     datetime=$(date "+%Y-%m-%d %H:%M:%S")
-    echo -e "${yellow}🕒 当前时间：${datetime}${reset}\n"
 
     # 显示菜单
     for i in "${!MAIN_MENU[@]}"; do
