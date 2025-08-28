@@ -156,22 +156,18 @@ show_main_menu() {
 
 
     # 当前日期时间显示在框下、菜单上
-    
+
     # 获取终端宽度
     term_width=$(tput cols)
 
-    # 系统信息显示（对齐版）
-    echo -e "${red}🖥️ 系统      ：${yellow}${system_name}${re}"
-    echo -e "${red}🌍 时区      ：${yellow}${timezone}${re}"
-    echo -e "${red}🈯 语言      ：${yellow}${language}${re}"
-    echo -e "${red}🧩 架构      ：${yellow}${cpu_arch}${re}"
-    echo -e "${red}🕒 当前时间  ：${yellow}${datetime}${re}\n"
-
-# 绿色下划线（自适应终端宽度）
-printf "${green}%${term_width}s${re}\n" | tr ' ' '━'
-
-# 绿色下划线（自适应终端宽度）
-printf "${green}%${term_width}s${re}\n" | tr ' ' '━'
+    # 打印对齐的系统信息（左边红色固定宽度，右边黄色自适应终端宽度）
+    printf "${red}%-12s${yellow}%-*s${re}\n" "🖥️ 系统："      $((term_width-15)) "$system_name"
+    printf "${red}%-12s${yellow}%-*s${re}\n" "🌍 时区："      $((term_width-15)) "$timezone"
+    printf "${red}%-12s${yellow}%-*s${re}\n" "🈯 语言："      $((term_width-15)) "$language"
+    printf "${red}%-12s${yellow}%-*s${re}\n" "🧩 架构："      $((term_width-15)) "$cpu_arch"
+    printf "${red}%-12s${yellow}%-*s${re}\n\n" "🕒 时间："    $((term_width-15)) "$datetime"
+    # 绿色下划线
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${re}\n"
 
     # 显示菜单
     for i in "${!MAIN_MENU[@]}"; do
