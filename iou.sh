@@ -181,30 +181,29 @@ swap_info="未启用"
 runtime=$(awk -F. '{run_days=int($1/86400); run_hours=int(($1%86400)/3600); run_minutes=int(($1%3600)/60); if(run_days>0) printf("%d天 ",run_days); if(run_hours>0) printf("%d时 ",run_hours); printf("%d分\n",run_minutes)}' /proc/uptime)
 
 # ================== 输出信息 ==================
-printf -- "%b系统信息详情%b\n" "$white" "$re"
-printf -- "------------------------\n"
+printf -- "${purple}================= 系统信息详情 =================${re}\n\n"
 
 # 主机与运营商
-printf -- "%b主机名: %b%s%b\n" "$green" "$yellow" "$hostname" "$re"
-printf -- "%b运营商: %b%s%b\n" "$green" "$yellow" "$isp_info" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "主机名:" "$re" "$yellow" "$hostname" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "运营商:" "$re" "$yellow" "$isp_info" "$re"
 printf -- "------------------------\n"
 
 # 系统信息
-printf -- "%b系统版本: %b%s%b\n" "$green" "$yellow" "$os_info" "$re"
-printf -- "%bLinux版本: %b%s%b\n" "$green" "$yellow" "$kernel_version" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "系统版本:" "$re" "$yellow" "$os_info" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "Linux版本:" "$re" "$yellow" "$kernel_version" "$re"
 printf -- "------------------------\n"
 
 # CPU信息
-printf -- "%bCPU架构: %b%s%b\n" "$green" "$yellow" "$cpu_arch" "$re"
-printf -- "%bCPU型号: %b%s%b\n" "$green" "$yellow" "$cpu_info" "$re"
-printf -- "%bCPU核心数: %b%s%b\n" "$green" "$yellow" "$cpu_cores" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU架构:" "$re" "$yellow" "$cpu_arch" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU型号:" "$re" "$yellow" "$cpu_info" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU核心数:" "$re" "$yellow" "$cpu_cores" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU占用:" "$re" "$yellow" "$cpu_usage_percent" "$re"
 printf -- "------------------------\n"
-printf -- "%bCPU占用: %b%s%b\n" "$green" "$yellow" "$cpu_usage_percent" "$re"
 
 # 内存与硬盘
-printf -- "%b物理内存: %b%s%b\n" "$green" "$yellow" "$mem_info" "$re"
-printf -- "%b虚拟内存: %b%s%b\n" "$green" "$yellow" "$swap_info" "$re"
-printf -- "%b硬盘占用: %b%s%b\n" "$green" "$yellow" "$disk_info" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "物理内存:" "$re" "$yellow" "$mem_info" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "虚拟内存:" "$re" "$yellow" "$swap_info" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "硬盘占用:" "$re" "$yellow" "$disk_info" "$re"
 printf -- "------------------------\n"
 
 # 网络流量
@@ -215,19 +214,20 @@ done
 printf -- "------------------------\n"
 
 # 网络算法
-printf -- "%b网络拥堵算法: %b%s %s%b\n" "$green" "$yellow" "$congestion_algorithm" "$queue_algorithm" "$re"
+printf -- "%b%-12s%b %b%s %s%b\n" "$green" "网络拥堵算法:" "$re" "$yellow" "$congestion_algorithm" "$queue_algorithm" "$re"
 printf -- "------------------------\n"
 
 # 公网IP
-printf -- "%b公网IPv4地址: %b%s%b\n" "$green" "$yellow" "$ipv4_address" "$re"
-printf -- "%b公网IPv6地址: %b%s%b\n" "$green" "$yellow" "$ipv6_address" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "公网IPv4:" "$re" "$yellow" "$ipv4_address" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "公网IPv6:" "$re" "$yellow" "$ipv6_address" "$re"
 printf -- "------------------------\n"
 
 # 地理位置与时间
-printf -- "%b地理位置: %b%s %s%b\n" "$green" "$yellow" "$country" "$city" "$re"
-printf -- "%b系统时间: %b%s%b\n" "$green" "$yellow" "$current_time" "$re"
+printf -- "%b%-12s%b %b%s %s%b\n" "$green" "地理位置:" "$re" "$yellow" "$country" "$city" "$re"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "系统时间:" "$re" "$yellow" "$current_time" "$re"
 printf -- "------------------------\n"
 
 # 系统运行时长
-printf -- "%b系统运行时长: %b%s%b\n" "$green" "$yellow" "$runtime" "$re"
-printf -- "\n"
+printf -- "%b%-12s%b %b%s%b\n" "$green" "系统运行时长:" "$re" "$yellow" "$runtime" "$re"
+
+printf -- "\n${purple}===============================================${re}\n"
