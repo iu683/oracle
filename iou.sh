@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # ================== 颜色定义 ==================
-white="\033[37m"
-purple="\033[35m"
 green="\033[32m"
+yellow="\033[33m"
+red="\033[31m"
+white="\033[37m"
 re="\033[0m"
 
 # ================== ASCII VPS Logo ==================
-printf -- "${purple}"
+printf -- "${green}"
 printf -- " _    __ ____   _____ \n"
 printf -- "| |  / // __ \\ / ___/ \n"
 printf -- "| | / // /_/ / \\__ \\  \n"
@@ -84,7 +85,7 @@ clear
 
 # ================== CPU型号 ==================
 cpu_info=$(grep 'model name' /proc/cpuinfo | head -1 | sed -r 's/model name\s*:\s*//')
-cpu_cores=2  # 固定显示 2 核
+cpu_cores=$(grep -c ^processor /proc/cpuinfo)
 
 # ================== CPU占用率 ==================
 get_cpu_usage(){
@@ -124,7 +125,6 @@ fi
 
 # ================== 硬盘占用 ==================
 disk_info=$(df -BG / | awk 'NR==2{printf "%.2f/%.2f GB (%s)", $3, $2, $5}')
-
 
 # ================== 地理位置与ISP ==================
 country=$(curl -s --max-time 3 ipinfo.io/country)
@@ -173,63 +173,51 @@ net_output=$(get_net_traffic)
 
 # ================== 时间与运行时长 ==================
 current_time=$(date "+%Y-%m-%d %I:%M %p")
-swap_used=$(free -m | awk 'NR==3{print $3}')
-swap_total=$(free -m | awk 'NR==3{print $2}')
-swap_info="未启用"
-[ -n "$swap_total" ] && [ "$swap_total" -ne 0 ] && swap_info="${swap_used}MB/${swap_total}MB ($((swap_used*100/swap_total))%)"
-
 runtime=$(awk -F. '{run_days=int($1/86400); run_hours=int(($1%86400)/3600); run_minutes=int(($1%3600)/60); if(run_days>0) printf("%d天 ",run_days); if(run_hours>0) printf("%d时 ",run_hours); printf("%d分\n",run_minutes)}' /proc/uptime)
 
+# ================== 动态颜色高亮 ==================
+get_usage_color(){
+  local value=$1
+  if (( $(echo "$value >= 80" | bc -l) )); then
+    echo "$red"
+  elif (( $(echo "$value >= 50" | bc -l) )); then
+    echo "$yellow"
+  else
+    echo "$green"
+  fi
+}
+
+cpu_usage_color=$(get_usage_color "${cpu_usage_percent%.*}")
+mem_percent_value=$(echo $mem_percent | cut -d. -f1)
+mem_usage_color=$(get_usage_color "$mem_percent_value")
+
 # ================== 输出信息 ==================
-echo -e "${white}系统信息详情${re}"
-echo "------------------------"
-
-# 主机名与运营商
-echo -e "${green}主机名: ${yellow}${hostname}${re}"
-echo -e "${green}运营商: ${yellow}${isp_info}${re}"
-echo "------------------------"
-
-# 系统信息
-echo -e "${green}系统版本: ${yellow}${os_info}${re}"
-echo -e "${green}Linux版本: ${yellow}${kernel_version}${re}"
-echo "------------------------"
-
-# CPU信息
-echo -e "${green}CPU架构: ${yellow}${cpu_arch}${re}"
-echo -e "${green}CPU型号: ${yellow}${cpu_info}${re}"
-echo -e "${green}CPU核心数: ${yellow}${cpu_cores}${re}"
-echo -e "${green}CPU占用: ${yellow}${cpu_usage_percent}${re}"
-echo "------------------------"
-
-# 内存与硬盘
-echo -e "${green}物理内存: ${yellow}${mem_info}${re}"
-echo -e "${green}虚拟内存: ${yellow}${swap_info}${re}"
-echo -e "${green}硬盘占用: ${yellow}${disk_info}${re}"
-echo "------------------------"
-
-# 网络流量
-if [[ -n "$net_output" ]]; then
-    while IFS= read -r line; do
-        echo -e "${yellow}${line}${re}"
-    done <<< "$net_output"
-fi
-echo "------------------------"
-
-# 网络算法
-echo -e "${green}网络拥堵算法: ${yellow}${congestion_algorithm} ${queue_algorithm}${re}"
-echo "------------------------"
-
-# 公网IP
-echo -e "${green}公网IPv4地址: ${yellow}${ipv4_address}${re}"
-echo -e "${green}公网IPv6地址: ${yellow}${ipv6_address}${re}"
-echo "------------------------"
-
-# 地理位置与系统时间
-echo -e "${green}地理位置: ${yellow}${country} ${city}${re}"
-echo -e "${green}系统时间: ${yellow}${current_time}${re}"
-echo "------------------------"
-
-# 系统运行时长
-echo -e "${green}系统运行时长: ${yellow}${runtime}${re}"
-echo -e "\n${purple}===============================================${re}"
-
+printf -- "%b系统信息详情%b\n" "$green" "$re"
+printf -- "------------------------\n"
+printf -- "%b主机名: %b%s%b\n" "$white" "$green" "$hostname" "$re"
+printf -- "%b运营商: %b%s%b\n" "$white" "$green" "$isp_info" "$re"
+printf -- "------------------------\n"
+printf -- "%b系统版本: %b%s%b\n" "$white" "$yellow" "$os_info" "$re"
+printf -- "%bLinux版本: %b%s%b\n" "$white" "$yellow" "$kernel_version" "$re"
+printf -- "------------------------\n"
+printf -- "%bCPU架构: %b%s%b\n" "$white" "$green" "$cpu_arch" "$re"
+printf -- "%bCPU型号: %b%s%b\n" "$white" "$green" "$cpu_info" "$re"
+printf -- "%bCPU核心数: %b%s%b\n" "$white" "$green" "$cpu_cores" "$re"
+printf -- "------------------------\n"
+printf -- "%bCPU占用: %b%s%b\n" "$white" "$cpu_usage_color" "$cpu_usage_percent" "$re"
+printf -- "%b物理内存: %b%s%b\n" "$white" "$mem_usage_color" "$mem_info" "$re"
+printf -- "%b虚拟内存: %b%s%b\n" "$white" "$green" "$swap_info" "$re"
+printf -- "%b硬盘占用: %b%s%b\n" "$white" "$green" "$disk_info" "$re"
+printf -- "------------------------\n"
+printf -- "%b%s%b\n" "$green" "$net_output" "$re"
+printf -- "------------------------\n"
+printf -- "%b网络拥堵算法: %b%s %s%b\n" "$white" "$green" "$congestion_algorithm" "$queue_algorithm" "$re"
+printf -- "------------------------\n"
+printf -- "%b公网IPv4地址: %b%s%b\n" "$white" "$yellow" "$ipv4_address" "$re"
+printf -- "%b公网IPv6地址: %b%s%b\n" "$white" "$yellow" "$ipv6_address" "$re"
+printf -- "------------------------\n"
+printf -- "%b地理位置: %b%s %s%b\n" "$white" "$yellow" "$country" "$city" "$re"
+printf -- "%b系统时间: %b%s%b\n" "$white" "$yellow" "$current_time" "$re"
+printf -- "------------------------\n"
+printf -- "%b系统运行时长: %b%s%b\n" "$white" "$green" "$runtime" "$re"
+printf -- "\n"
