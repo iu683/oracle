@@ -22,6 +22,7 @@ root_use() {
         exit 1
     fi
 }
+
 # -----------------------------
 # 重启 Docker 并恢复容器端口映射
 # -----------------------------
@@ -29,7 +30,6 @@ restart_docker() {
     root_use
     echo -e "${YELLOW}正在重启 Docker...${RESET}"
 
-    # 重启 Docker 服务
     if systemctl list-unit-files | grep -q "^docker.service"; then
         systemctl restart docker
     else
@@ -38,11 +38,8 @@ restart_docker() {
         sleep 5
     fi
 
-    # 检查 Docker 是否启动成功
     if docker info &>/dev/null; then
         echo -e "${GREEN}✅ Docker 已成功重启${RESET}"
-
-        # 自动重启所有容器
         containers=$(docker ps -a -q)
         if [ -n "$containers" ]; then
             echo -e "${CYAN}正在重启所有容器以恢复端口映射...${RESET}"
@@ -56,9 +53,8 @@ restart_docker() {
     fi
 }
 
-
 # -----------------------------
-# 检测 Docker 是否运行
+# 检查 Docker 是否运行
 # -----------------------------
 check_docker_running() {
     if ! command -v docker &>/dev/null; then
@@ -145,7 +141,7 @@ docker_install_update() {
 }
 
 # -----------------------------
-# 卸载 Docker（含 Compose）
+# 卸载 Docker
 # -----------------------------
 docker_uninstall() {
     root_use
@@ -192,8 +188,6 @@ docker_compose_install_update() {
 docker_ipv6_on() {
     root_use
     mkdir -p /etc/docker
-
-    # 如果文件存在，用 jq 更新，否则创建
     if [ -f /etc/docker/daemon.json ]; then
         jq '. + {ipv6:true,"fixed-cidr-v6":"fd00::/64"}' /etc/docker/daemon.json 2>/dev/null \
             >/etc/docker/daemon.json.tmp || \
@@ -201,13 +195,9 @@ docker_ipv6_on() {
     else
         echo '{"ipv6":true,"fixed-cidr-v6":"fd00::/64"}' > /etc/docker/daemon.json.tmp
     fi
-
     mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
-
-    # 重启 Docker 并自动重启之前所有容器
     restart_docker
     docker ps -a -q | xargs -r docker start
-
     echo -e "${GREEN}✅ Docker IPv6 已开启，所有容器已恢复${RESET}"
 }
 
@@ -217,13 +207,9 @@ docker_ipv6_off() {
         jq 'del(.ipv6) | del(.["fixed-cidr-v6"])' /etc/docker/daemon.json \
             >/etc/docker/daemon.json.tmp 2>/dev/null || \
             cp /etc/docker/daemon.json /etc/docker/daemon.json.tmp
-
         mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
-
-        # 重启 Docker 并自动重启之前所有容器
         restart_docker
         docker ps -a -q | xargs -r docker start
-
         echo -e "${GREEN}✅ Docker IPv6 已关闭，所有容器已恢复${RESET}"
     else
         echo -e "${YELLOW}⚠️ Docker 配置文件不存在，无法关闭 IPv6${RESET}"
@@ -231,74 +217,47 @@ docker_ipv6_off() {
 }
 
 # -----------------------------
-# 开放所有端口（IPv4 + IPv6）
+# 开放所有端口（IPv4 + IPv6 + nftables）
 # -----------------------------
 open_all_ports() {
     root_use
-    read -p "⚠️ 确认要开放所有端口吗？这将允许所有入站/出站流量！(Y/N): " confirm
+    read -p "⚠️ 确认要开放所有端口吗？(Y/N): " confirm
     [[ $confirm =~ [Yy] ]] || { echo -e "${YELLOW}操作已取消${RESET}"; return; }
-
     echo -e "${YELLOW}正在检测可用防火墙工具...${RESET}"
 
-    # IPv4
     if command -v iptables &>/dev/null; then
-        echo -e "${CYAN}⚡ 开放 IPv4 端口 (iptables)...${RESET}"
         iptables -P INPUT ACCEPT
         iptables -P FORWARD ACCEPT
         iptables -P OUTPUT ACCEPT
         iptables -F
     fi
-
-    # IPv6
     if command -v ip6tables &>/dev/null; then
-        echo -e "${CYAN}⚡ 开放 IPv6 端口 (ip6tables)...${RESET}"
         ip6tables -P INPUT ACCEPT
         ip6tables -P FORWARD ACCEPT
         ip6tables -P OUTPUT ACCEPT
         ip6tables -F
     fi
-
-    # nftables 支持
     if command -v nft &>/dev/null; then
-        echo -e "${CYAN}⚡ 清空 nftables 规则 (nft)...${RESET}"
         nft flush ruleset 2>/dev/null || true
     fi
-
-    echo -e "${GREEN}✅ 已开放所有端口（IPv4 + IPv6，如果可用）${RESET}"
-    echo -e "${YELLOW}⚠️ 请注意：VPS 所有端口已开放，存在安全风险${RESET}"
-
-    # 自动重启 Docker 并恢复容器端口映射
-    if command -v docker &>/dev/null; then
-        echo -e "${CYAN}⚡ 自动重启 Docker 并恢复容器端口映射...${RESET}"
-        restart_docker
-    fi
+    echo -e "${GREEN}✅ 已开放所有端口${RESET}"
+    restart_docker
 }
 
-
-
 # -----------------------------
-# iptables 切换（自动备份 + Docker 重载规则 + 自动恢复用户规则）
+# iptables 切换
 # -----------------------------
 switch_iptables_legacy() {
     root_use
     if [ -x /usr/sbin/iptables-legacy ] && [ -x /usr/sbin/ip6tables-legacy ]; then
-        # 备份当前规则
         iptables-save > /tmp/iptables_backup_$(date +%F_%H%M%S).v4
         ip6tables-save > /tmp/ip6tables_backup_$(date +%F_%H%M%S).v6
-        echo -e "${YELLOW}已备份当前规则到 /tmp${RESET}"
-
-        # 切换
         update-alternatives --set iptables /usr/sbin/iptables-legacy
         update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-        echo -e "${GREEN}已切换到 iptables-legacy${RESET}"
-
-        # 重启 Docker
         restart_docker
-
-        # 恢复之前规则
         iptables-restore < /tmp/iptables_backup_$(ls /tmp | grep iptables_backup_ | sort | tail -n1)
         ip6tables-restore < /tmp/ip6tables_backup_$(ls /tmp | grep ip6tables_backup_ | sort | tail -n1)
-        echo -e "${GREEN}✅ 之前的自定义规则已恢复${RESET}"
+        echo -e "${GREEN}✅ 已切换到 iptables-legacy 并恢复规则${RESET}"
     else
         echo -e "${RED}系统未安装 iptables-legacy，无法切换${RESET}"
     fi
@@ -307,31 +266,22 @@ switch_iptables_legacy() {
 switch_iptables_nft() {
     root_use
     if [ -x /usr/sbin/iptables-nft ] && [ -x /usr/sbin/ip6tables-nft ]; then
-        # 备份当前规则
         iptables-save > /tmp/iptables_backup_$(date +%F_%H%M%S).v4
         ip6tables-save > /tmp/ip6tables_backup_$(date +%F_%H%M%S).v6
-        echo -e "${YELLOW}已备份当前规则到 /tmp${RESET}"
-
-        # 切换
         update-alternatives --set iptables /usr/sbin/iptables-nft
         update-alternatives --set ip6tables /usr/sbin/ip6tables-nft
-        echo -e "${GREEN}已切换到 iptables-nft${RESET}"
-
-        # 重启 Docker
         restart_docker
-
-        # 恢复之前规则
         iptables-restore < /tmp/iptables_backup_$(ls /tmp | grep iptables_backup_ | sort | tail -n1)
         ip6tables-restore < /tmp/ip6tables_backup_$(ls /tmp | grep ip6tables_backup_ | sort | tail -n1)
-        echo -e "${GREEN}✅ 之前的自定义规则已恢复${RESET}"
+        echo -e "${GREEN}✅ 已切换到 iptables-nft 并恢复规则${RESET}"
     else
         echo -e "${RED}系统未安装 iptables-nft，无法切换${RESET}"
     fi
 }
 
-
-
-# 当前 Docker 状态
+# -----------------------------
+# Docker 状态
+# -----------------------------
 docker_status() {
     if docker info &>/dev/null; then
         echo "运行中"
@@ -340,7 +290,6 @@ docker_status() {
     fi
 }
 
-# 当前 iptables 模式
 current_iptables() {
     ipt=$(update-alternatives --query iptables 2>/dev/null | grep 'Value:' | awk '{print $2}')
     if [[ $ipt == *legacy ]]; then
@@ -350,7 +299,6 @@ current_iptables() {
     fi
 }
 
-# 容器信息
 docker_container_info() {
     total=$(docker ps -a -q | wc -l)
     running=$(docker ps -q | wc -l)
