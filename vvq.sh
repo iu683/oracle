@@ -108,7 +108,7 @@ show_system_usage() {
     timezone=$(timedatectl | grep "Time zone" | awk '{print $3}')
     language=$LANG
     cpu_arch=$(uname -m)
-
+    datetime=$(date "+%Y-%m-%d %H:%M:%S")
 
 
 
@@ -157,13 +157,11 @@ show_main_menu() {
 
     # 当前日期时间显示在框下、菜单上
     # 系统信息显示（对齐版）
-    echo -e "${red}🖥️ 系统      ：${yellow}${system_name}${re}"
+    echo -e "${red}🖥️系统      ：${yellow}${system_name}${re}"
     echo -e "${red}🌍 时区      ：${yellow}${timezone}${re}"
     echo -e "${red}🈯 语言      ：${yellow}${language}${re}"
     echo -e "${red}🧩 架构      ：${yellow}${cpu_arch}${re}"
     echo -e "${red}🕒 当前时间  ：${yellow}${datetime}${re}\n"
-
-    datetime=$(date "+%Y-%m-%d %H:%M:%S")
 
     # 显示菜单
     for i in "${!MAIN_MENU[@]}"; do
