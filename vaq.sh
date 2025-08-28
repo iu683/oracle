@@ -164,7 +164,7 @@ show_main_menu() {
     label_w=8
 
     # 注意：用半角冒号 ":"，不要用全角 "："
-    printf "${red}%s %-*s:${yellow} %s${re}\n" "🖥️" $label_w "系统" "$system_name"
+    printf "${red}%s %-*s:${yellow} %s${re}\n" "🌍" $label_w "系统" "$system_name"
     printf "${red}%s %-*s:${yellow} %s${re}\n" "🌍"  $label_w "时区" "$timezone"
     printf "${red}%s %-*s:${yellow} %s${re}\n" "🈯"  $label_w "语言" "$language"
     printf "${red}%s %-*s:${yellow} %s${re}\n" "🧩"  $label_w "架构" "$cpu_arch"
