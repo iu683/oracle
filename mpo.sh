@@ -1,186 +1,170 @@
 #!/bin/bash
-# MTProto Proxy 管理脚本 for Docker (ellermister/mtproxy, 无需手动设置 secret)
 
-NAME="mtproxy"
-IMAGE="ellermister/mtproxy"
-VOLUME="mtproxy-data"
+# =========================
+# 跨系统 SSH 端口修改脚本（含远程检测、低端口处理）
+# =========================
 
-GREEN="\033[32m"
-YELLOW="\033[33m"
-RESET="\033[0m"
-
-# 检测端口是否被占用
-function check_port() {
-    local port=$1
-    if command -v lsof >/dev/null 2>&1; then
-        lsof -i :"$port" >/dev/null 2>&1
-    elif command -v ss >/dev/null 2>&1; then
-        ss -tuln | grep -q ":$port "
+# -------------------------
+# 检查系统类型
+# -------------------------
+if [ -f /etc/debian_version ]; then
+    SYS="debian"
+    PKG_INSTALL="apt install -y"
+    UPDATE_CMD="apt update -y"
+elif [ -f /etc/redhat-release ]; then
+    SYS="rhel"
+    if command -v dnf >/dev/null 2>&1; then
+        PKG_INSTALL="dnf install -y"
+        UPDATE_CMD="dnf makecache -y"
     else
-        netstat -tuln 2>/dev/null | grep -q ":$port "
+        PKG_INSTALL="yum install -y"
+        UPDATE_CMD="yum makecache -y"
     fi
-    # 返回 0 表示可用，1 表示被占用
-    if [[ $? -eq 0 ]]; then
-        return 1
+else
+    echo "⚠ 不支持的系统"
+    exit 1
+fi
+
+# -------------------------
+# 检查是否 root
+# -------------------------
+if [ "$EUID" -ne 0 ]; then
+    echo "请使用 root 用户运行此脚本"
+    exit 1
+fi
+
+# -------------------------
+# 读取当前端口
+# -------------------------
+current_port=$(grep -E '^ *Port [0-9]+' /etc/ssh/sshd_config | awk '{print $2}')
+current_port=${current_port:-22}
+echo "当前的 SSH 端口号是: $current_port"
+echo "------------------------"
+
+# -------------------------
+# 输入新端口
+# -------------------------
+read -p $'\033[1;35m请输入新的 SSH 端口号: \033[0m' new_port
+
+# 检查端口合法性
+if ! [[ "$new_port" =~ ^[0-9]+$ ]] || [ "$new_port" -le 0 ] || [ "$new_port" -gt 65535 ]; then
+    echo -e "\033[1;31m错误: 请输入 1-65535 的合法端口号\033[0m"
+    exit 1
+fi
+
+# -------------------------
+# 备份 SSH 配置
+# -------------------------
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%F_%T)
+
+# -------------------------
+# 修改 SSH 配置端口
+# -------------------------
+sed -i "s/^Port [0-9]\+/Port $new_port/" /etc/ssh/sshd_config
+
+# -------------------------
+# 停用 systemd socket
+# -------------------------
+if systemctl is-enabled ssh.socket >/dev/null 2>&1; then
+    echo "禁用 ssh.socket 避免覆盖端口..."
+    systemctl stop ssh.socket
+    systemctl disable ssh.socket
+fi
+
+# -------------------------
+# 防火墙放行端口
+# -------------------------
+if command -v ufw >/dev/null 2>&1; then
+    ufw allow $new_port/tcp
+elif command -v firewall-cmd >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-port=$new_port/tcp
+    firewall-cmd --reload
+elif command -v iptables >/dev/null 2>&1; then
+    if ! iptables -C INPUT -p tcp --dport $new_port -j ACCEPT &>/dev/null; then
+        iptables -I INPUT -p tcp --dport $new_port -j ACCEPT
+        [ -x "$(command -v netfilter-persistent)" ] && netfilter-persistent save
+    fi
+elif command -v nft >/dev/null 2>&1; then
+    if ! nft list ruleset | grep -q "tcp dport $new_port accept"; then
+        nft add rule inet filter input tcp dport $new_port accept
+        nft list ruleset > /etc/nftables.conf
+    fi
+else
+    echo "⚠ 未检测到防火墙，端口可能未放行"
+fi
+
+# -------------------------
+# 重启 SSH
+# -------------------------
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl restart sshd 2>/dev/null || systemctl restart ssh
+else
+    service ssh restart
+fi
+
+echo -e "\033[1;32mSSH 端口已修改为: $new_port\033[0m"
+
+# -------------------------
+# 安装依赖（跨系统）
+# -------------------------
+$UPDATE_CMD
+
+# ss
+if ! command -v ss >/dev/null 2>&1; then
+    $PKG_INSTALL iproute2 || $PKG_INSTALL iproute
+fi
+
+# netstat
+if ! command -v netstat >/dev/null 2>&1; then
+    $PKG_INSTALL net-tools
+fi
+
+# nc
+if ! command -v nc >/dev/null 2>&1; then
+    if [ "$SYS" = "debian" ]; then
+        $PKG_INSTALL netcat-openbsd || $PKG_INSTALL netcat-traditional
     else
-        return 0
+        $PKG_INSTALL nc
     fi
-}
+fi
 
-# 获取随机可用端口
-function get_random_port() {
-    while true; do
-        PORT=$(shuf -i 1025-65535 -n 1)
-        check_port $PORT && { echo $PORT; break; }
-    done
-}
-
-# 获取公网 IP
-function get_ip() {
-    curl -s https://api.ipify.org || \
-    curl -s ifconfig.me || \
-    curl -s icanhazip.com
-}
-
-# ========= 安装并启动代理 =========
-function install_proxy() {
-    echo -e "\n${GREEN}=== 安装并启动 MTProto Proxy ===${RESET}\n"
-    read -p "请输入外部端口 (默认 8443, 留空随机): " PORT
-    if [[ -z "$PORT" ]]; then
-        PORT=$(get_random_port)
-        echo "随机选择未占用端口: $PORT"
-    else
-        while ! check_port $PORT; do
-            echo "端口 $PORT 已被占用，请重新输入"
-            read -p "端口: " PORT
-        done
+# -------------------------
+# 本地端口监听检测
+# -------------------------
+echo "检测本地端口 $new_port 是否已启动..."
+for i in {1..10}; do
+    sleep 1
+    if command -v ss >/dev/null 2>&1; then
+        ss -tnlp | grep -q ":$new_port " && echo -e "\033[1;32m✔ 本地端口 $new_port 正常监听\033[0m" && break
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -tnlp | grep -q ":$new_port " && echo -e "\033[1;32m✔ 本地端口 $new_port 正常监听\033[0m" && break
     fi
-
-    read -p "IP 白名单选项 (OFF/IP/IPSEG, 默认 OFF): " IPWL
-    IPWL=${IPWL:-OFF}
-    read -p "请输入 domain (伪装域名, 默认 cloudflare.com): " DOMAIN
-    DOMAIN=${DOMAIN:-cloudflare.com}
-
-    # 删除旧容器
-    if docker ps -a --format '{{.Names}}' | grep -Eq "^${NAME}\$"; then
-        echo "⚠️ 已存在旧容器，先删除..."
-        docker rm -f ${NAME}
-    fi
-
-    docker volume create ${VOLUME} >/dev/null 2>&1
-
-    docker run -d --name ${NAME} \
-        --restart=always \
-        -v ${VOLUME}:/data \
-        -e domain="${DOMAIN}" \
-        -e ip_white_list="${IPWL}" \
-        -p 8080:80 \
-        -p ${PORT}:443 \
-        ${IMAGE}
-
-    echo "⏳ 等待 5 秒让容器启动..."
-    sleep 5
-
-    if ! docker ps --format '{{.Names}}' | grep -Eq "^${NAME}\$"; then
-        echo "❌ 容器未启动，请查看 Docker 日志。"
-        return
-    fi
-
-    IP=$(get_ip)
-
-    # 提取 Secret
-    SECRET=$(docker logs --tail 50 ${NAME} 2>&1 | grep "MTProxy Secret" | awk '{print $NF}' | tail -n1)
-
-    echo -e "\n${GREEN}✅ 安装完成！代理信息如下：${RESET}"
-    echo "服务器 IP: $IP"
-    echo "端口     : $PORT"
-    echo "Secret   : $SECRET"
-    echo "domain   : $DOMAIN"
-    echo
-    echo "👉 Telegram 链接："
-    echo "tg://proxy?server=$IP&port=$PORT&secret=$SECRET"
-}
-
-
-function uninstall_proxy() {
-    echo -e "\n${GREEN}=== 卸载 MTProto Proxy ===${RESET}\n"
-    docker rm -f ${NAME} >/dev/null 2>&1
-    docker volume rm -f ${VOLUME} >/dev/null 2>&1
-    echo "✅ 已卸载并清理配置。"
-}
-
-function show_logs() {
-    if ! docker ps --format '{{.Names}}' | grep -Eq "^${NAME}\$"; then
-        echo "❌ 容器未运行，请先安装或启动代理。"
-        return
-    fi
-    echo -e "\n${GREEN}=== MTProto Proxy 日志 (最近50行) ===${RESET}\n"
-    docker logs --tail=50 -f ${NAME}
-}
-
-# ========= 修改配置并重启容器 =========
-function modify_proxy() {
-    echo -e "\n${YELLOW}=== 修改配置并重启 MTProto Proxy ===${RESET}\n"
-    read -p "请输入新的端口 (留空则不修改): " NEW_PORT
-    read -p "请输入新的 domain (留空则不修改): " NEW_DOMAIN
-    read -p "IP 白名单选项 (OFF/IP/IPSEG, 留空则不修改): " NEW_IPWL
-
-    # 删除旧容器
-    docker rm -f ${NAME} >/dev/null 2>&1
-
-    PORT=${NEW_PORT:-8443}
-    DOMAIN=${NEW_DOMAIN:-cloudflare.com}
-    IPWL=${NEW_IPWL:-OFF}
-
-    docker run -d --name ${NAME} \
-        --restart=always \
-        -v ${VOLUME}:/data \
-        -e domain="${DOMAIN}" \
-        -e ip_white_list="${IPWL}" \
-        -p 8080:80 \
-        -p ${PORT}:443 \
-        ${IMAGE}
-
-    echo "⏳ 等待 5 秒让容器重启..."
-    sleep 5
-
-    if ! docker ps --format '{{.Names}}' | grep -Eq "^${NAME}\$"; then
-        echo "❌ 容器未启动，请查看 Docker 日志。"
-        return
-    fi
-
-    IP=$(get_ip)
-    SECRET=$(docker logs --tail 50 ${NAME} 2>&1 | grep "MTProxy Secret:" | tail -n1 | sed 's/.*MTProxy Secret: //g' | tr -d '[:space:]')
-
-    echo -e "\n${GREEN}✅ 配置修改完成！代理信息如下：${RESET}"
-    echo "服务器 IP: $IP"
-    echo "端口     : $PORT"
-    echo "Secret   : $SECRET"
-    echo "domain   : $DOMAIN"
-    echo
-    echo "👉 Telegram 链接："
-    echo "tg://proxy?server=$IP&port=$PORT&secret=$SECRET"
-}
-
-function menu() {
-    echo -e "\n${GREEN}===== MTProto Proxy 管理脚本 =====${RESET}"
-    echo -e "${GREEN}1. 安装并启动代理${RESET}"
-    echo -e "${GREEN}2. 卸载代理${RESET}"
-    echo -e "${GREEN}3. 查看运行日志${RESET}"
-    echo -e "${GREEN}4. 修改配置并重启容器${RESET}"
-    echo -e "${GREEN}0. 退出${RESET}"
-    echo -e "${GREEN}=================================${RESET}"
-    read -p "请输入选项: " choice
-    case "$choice" in
-        1) install_proxy ;;
-        2) uninstall_proxy ;;
-        3) show_logs ;;
-        4) modify_proxy ;;
-        0) exit 0 ;;
-        *) echo "❌ 无效输入" ;;
-    esac
-}
-
-while true; do
-    menu
+    [ $i -eq 10 ] && echo -e "\033[1;31m⚠ 本地端口 $new_port 没有监听\033[0m"
 done
+
+# -------------------------
+# 远程端口可达性检测
+# -------------------------
+echo "检测远程端口 $new_port 是否可达..."
+VPS_IP=$(curl -s https://ifconfig.me)
+if [ -z "$VPS_IP" ]; then
+    echo "⚠ 无法获取公网 IP，跳过远程检测"
+else
+    if command -v nc >/dev/null 2>&1; then
+        timeout 3 nc -zv $VPS_IP $new_port &>/dev/null
+        if [ $? -eq 0 ]; then
+            echo -e "\033[1;32m✔ 远程端口 $new_port 可访问\033[0m"
+        else
+            echo -e "\033[1;31m⚠ 远程端口 $new_port 无法访问，请检查防火墙或云安全组\033[0m"
+        fi
+    else
+        echo "⚠ nc 不可用，无法检测远程端口"
+    fi
+fi
+
+# -------------------------
+# 提示低端口权限问题
+# -------------------------
+if [ "$new_port" -lt 1024 ]; then
+    echo "⚠ 注意：端口 <1024 属于系统端口，确保 SSH 服务以 root 权限运行，否则监听可能失败"
+fi
