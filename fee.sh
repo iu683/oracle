@@ -106,25 +106,34 @@ open_all_ports() {
 
 ip_action() {
     local action=$1 ip=$2
-    for proto in iptables ip6tables; do
-        case $action in
-            accept)
-                $proto -I INPUT -s "$ip" -j ACCEPT
-                ;;
-            drop)
-                $proto -I INPUT -s "$ip" -j DROP
-                ;;
-            delete)
-                while $proto -C INPUT -s "$ip" -j ACCEPT 2>/dev/null; do
-                    $proto -D INPUT -s "$ip" -j ACCEPT
-                done
-                while $proto -C INPUT -s "$ip" -j DROP 2>/dev/null; do
-                    $proto -D INPUT -s "$ip" -j DROP
-                done
-                ;;
-        esac
-    done
+
+    # 判断 IPv4 还是 IPv6
+    if [[ $ip =~ : ]]; then
+        # IPv6
+        proto="ip6tables"
+    else
+        # IPv4
+        proto="iptables"
+    fi
+
+    case $action in
+        accept)
+            $proto -I INPUT -s "$ip" -j ACCEPT
+            ;;
+        drop)
+            $proto -I INPUT -s "$ip" -j DROP
+            ;;
+        delete)
+            while $proto -C INPUT -s "$ip" -j ACCEPT 2>/dev/null; do
+                $proto -D INPUT -s "$ip" -j ACCEPT
+            done
+            while $proto -C INPUT -s "$ip" -j DROP 2>/dev/null; do
+                $proto -D INPUT -s "$ip" -j DROP
+            done
+            ;;
+    esac
 }
+
 
 ping_action() {
     local action=$1
@@ -206,14 +215,12 @@ menu() {
             1)
                 read -p "请输入要开放的端口号: " PORT
                 for proto in iptables ip6tables; do
-                    # 删除可能存在的 DROP 规则
                     while $proto -C INPUT -p tcp --dport "$PORT" -j DROP 2>/dev/null; do
                         $proto -D INPUT -p tcp --dport "$PORT" -j DROP
                     done
                     while $proto -C INPUT -p udp --dport "$PORT" -j DROP 2>/dev/null; do
                         $proto -D INPUT -p udp --dport "$PORT" -j DROP
                     done
-                    # 插入 ACCEPT
                     $proto -I INPUT -p tcp --dport "$PORT" -j ACCEPT
                     $proto -I INPUT -p udp --dport "$PORT" -j ACCEPT
                 done
@@ -224,14 +231,12 @@ menu() {
             2)
                 read -p "请输入要关闭的端口号: " PORT
                 for proto in iptables ip6tables; do
-                    # 删除可能存在的 ACCEPT 规则
                     while $proto -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; do
                         $proto -D INPUT -p tcp --dport "$PORT" -j ACCEPT
                     done
                     while $proto -C INPUT -p udp --dport "$PORT" -j ACCEPT 2>/dev/null; do
                         $proto -D INPUT -p udp --dport "$PORT" -j ACCEPT
                     done
-                    # 插入 DROP
                     $proto -I INPUT -p tcp --dport "$PORT" -j DROP
                     $proto -I INPUT -p udp --dport "$PORT" -j DROP
                 done
@@ -243,28 +248,14 @@ menu() {
             4) restore_default_rules ;;
             5)
                 read -p "请输入要放行的IP: " IP
-                for proto in iptables ip6tables; do
-                    # 删除可能存在的 DROP
-                    while $proto -C INPUT -s "$IP" -j DROP 2>/dev/null; do
-                        $proto -D INPUT -s "$IP" -j DROP
-                    done
-                    # 插入 ACCEPT
-                    $proto -I INPUT -s "$IP" -j ACCEPT
-                done
+                ip_action accept "$IP"
                 save_rules
                 echo -e "${GREEN}✅ IP $IP 已放行${RESET}"
                 read -p "按回车继续..."
                 ;;
             6)
                 read -p "请输入要封禁的IP: " IP
-                for proto in iptables ip6tables; do
-                    # 删除可能存在的 ACCEPT
-                    while $proto -C INPUT -s "$IP" -j ACCEPT 2>/dev/null; do
-                        $proto -D INPUT -s "$IP" -j ACCEPT
-                    done
-                    # 插入 DROP
-                    $proto -I INPUT -s "$IP" -j DROP
-                done
+                ip_action drop "$IP"
                 save_rules
                 echo -e "${GREEN}✅ IP $IP 已封禁${RESET}"
                 read -p "按回车继续..."
