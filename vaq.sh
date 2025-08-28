@@ -82,7 +82,7 @@ show_system_usage() {
     done
 
     if [ "$max_level" -eq 0 ]; then
-        system_status="${green}系统状态：正常 ✅${reset}"
+        system_status="${green}系统状态：正常✅${reset}"
     elif [ "$max_level" -eq 1 ]; then
         system_status="${yellow}系统状态：警告 ⚠️${reset}"
     else
@@ -160,15 +160,14 @@ show_main_menu() {
     # 终端宽度（可用不用）
     term_width=$(tput cols 2>/dev/null || echo 80)
 
-    # 左列中文标签按“字符数”对齐（这里 8 足够，想更紧凑可用 6）
-    label_w=8
+    label_w=8  # 左侧标签宽度
 
-    # 注意：用半角冒号 ":"，不要用全角 "："
-    printf "${red}%s %-*s:${yellow} %s${re}\n" "🌍" $label_w "系统" "$system_name"
-    printf "${red}%s %-*s:${yellow} %s${re}\n" "🌍"  $label_w "时区" "$timezone"
-    printf "${red}%s %-*s:${yellow} %s${re}\n" "🈯"  $label_w "语言" "$language"
-    printf "${red}%s %-*s:${yellow} %s${re}\n" "🧩"  $label_w "架构" "$cpu_arch"
-    printf "${red}%s %-*s:${yellow} %s${re}\n" "🕒"  $label_w "时间" "$datetime"
+    printf "${red}%s %-*s:${yellow} %s${re}\n" "💻" $label_w "系统" "$system_name"
+    printf "${red}%s %-*s:${yellow} %s${re}\n" "🌍" $label_w "时区" "$timezone"
+    printf "${red}%s %-*s:${yellow} %s${re}\n" "🈯" $label_w "语言" "$language"
+    printf "${red}%s %-*s:${yellow} %s${re}\n" "🧩" $label_w "架构" "$cpu_arch"
+    printf "${red}%s %-*s:${yellow} %s${re}\n" "🕒" $label_w "时间" "$datetime"
+
 
     # 绿色下划线
     echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${re}\n"
