@@ -37,21 +37,25 @@ install_package() {
 }
 
 # --------------------------
-# Debian/Ubuntu 自动切换 iptables-legacy
+# Debian/Ubuntu 安装并切换 iptables-legacy
 # --------------------------
 setup_iptables_legacy() {
-    # 安装 legacy 包
-    apt-get install -y iptables-legacy
-    # 检查 iptables-legacy 是否存在
+    if ! command -v iptables >/dev/null 2>&1; then
+        echo -e "${YELLOW}iptables 未安装，自动安装 iptables-legacy ...${RESET}"
+        apt-get update
+        apt-get install -y iptables iptables-legacy
+    fi
+
     if command -v iptables-legacy >/dev/null 2>&1; then
+        echo -e "${YELLOW}切换 iptables-legacy ...${RESET}"
+        update-alternatives --install /usr/sbin/iptables iptables /usr/sbin/iptables-legacy 10
+        update-alternatives --install /usr/sbin/ip6tables ip6tables /usr/sbin/ip6tables-legacy 10
         update-alternatives --set iptables /usr/sbin/iptables-legacy
         update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-        update-alternatives --set arptables /usr/sbin/arptables-legacy
-        update-alternatives --set ebtables /usr/sbin/ebtables-legacy
-        IPT_CMD="iptables-legacy"
+        IPT_CMD="iptables"
         echo -e "${GREEN}已切换到 iptables-legacy${RESET}"
     else
-        echo -e "${RED}❌ iptables-legacy 不存在，使用默认 iptables${RESET}"
+        echo -e "${RED}❌ iptables-legacy 安装失败，使用默认 iptables${RESET}"
         IPT_CMD="iptables"
     fi
 }
