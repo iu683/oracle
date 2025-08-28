@@ -156,13 +156,23 @@ show_main_menu() {
 
 
     # 当前日期时间显示在框下、菜单上
+    
+    # 获取终端宽度
+    term_width=$(tput cols)
+
     # 系统信息显示（对齐版）
-    echo -e "${red}🖥️系统      ：${yellow}${system_name}${re}"
+    echo -e "${red}🖥️ 系统      ：${yellow}${system_name}${re}"
     echo -e "${red}🌍 时区      ：${yellow}${timezone}${re}"
     echo -e "${red}🈯 语言      ：${yellow}${language}${re}"
     echo -e "${red}🧩 架构      ：${yellow}${cpu_arch}${re}"
     echo -e "${red}🕒 当前时间  ：${yellow}${datetime}${re}\n"
-    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${re}\n"
+
+# 绿色下划线（自适应终端宽度）
+printf "${green}%${term_width}s${re}\n" | tr ' ' '━'
+
+# 绿色下划线（自适应终端宽度）
+printf "${green}%${term_width}s${re}\n" | tr ' ' '━'
+
     # 显示菜单
     for i in "${!MAIN_MENU[@]}"; do
         if [[ $i -eq 8 ]]; then  # 第9项（索引从0开始）
