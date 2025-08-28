@@ -43,22 +43,18 @@ install_package() {
 # --------------------------
 # Debian/Ubuntu 安装并切换 iptables-legacy
 # --------------------------
-install_iptables_if_missing() {
+if [[ -f /etc/debian_version ]]; then
     if ! command -v iptables >/dev/null 2>&1; then
         echo -e "${YELLOW}未检测到 iptables，自动安装 iptables + iptables-legacy...${RESET}"
         apt-get update && apt-get install -y iptables iptables-legacy
     fi
-    if command -v iptables-legacy >/dev/null 2>&1; then
-        echo -e "${YELLOW}切换到 iptables-legacy ...${RESET}"
-        update-alternatives --install /usr/sbin/iptables iptables /usr/sbin/iptables-legacy 10
-        update-alternatives --install /usr/sbin/ip6tables ip6tables /usr/sbin/ip6tables-legacy 10
-        update-alternatives --set iptables /usr/sbin/iptables-legacy
-        update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-        IPT_CMD="iptables"
-    else
-        IPT_CMD="iptables"
-    fi
-}
+    echo -e "${YELLOW}切换到 iptables-legacy ...${RESET}"
+    update-alternatives --install /usr/sbin/iptables iptables /usr/sbin/iptables-legacy 10
+    update-alternatives --install /usr/sbin/ip6tables ip6tables /usr/sbin/ip6tables-legacy 10
+    update-alternatives --set iptables /usr/sbin/iptables-legacy
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+    IPT_CMD="iptables"
+fi
 
 # --------------------------
 # 检测防火墙类型
@@ -67,7 +63,6 @@ if command -v ufw >/dev/null 2>&1; then
     FW_TYPE="ufw"
 elif command -v iptables >/dev/null 2>&1; then
     FW_TYPE="iptables"
-    [[ -f /etc/debian_version ]] && install_iptables_if_missing || IPT_CMD="iptables"
 elif command -v nft >/dev/null 2>&1; then
     FW_TYPE="nftables"
 else
