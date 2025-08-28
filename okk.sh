@@ -29,12 +29,18 @@ if command -v ufw >/dev/null 2>&1; then
 elif command -v firewall-cmd >/dev/null 2>&1; then
     firewall-cmd --permanent --add-port=$new_port/tcp
     firewall-cmd --reload
-#else
-#    iptables -I INPUT -p tcp --dport $new_port -j ACCEPT
-#    if command -v netfilter-persistent >/dev/null 2>&1; then
-#        netfilter-persistent save
-#    fi
+elif command -v iptables >/dev/null 2>&1; then
+    iptables -I INPUT -p tcp --dport $new_port -j ACCEPT
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+        netfilter-persistent save
+    fi
+elif command -v nft >/dev/null 2>&1; then
+    nft add rule inet filter input tcp dport $new_port accept
+    nft list ruleset > /etc/nftables.conf
+else
+    echo "⚠️ 未检测到已安装的防火墙，端口可能未放行，请手动检查"
 fi
+
 
 # 重启 SSH 服务（兼容多种系统）
 if systemctl list-unit-files | grep -q sshd.service; then
