@@ -1,145 +1,113 @@
 #!/bin/bash
+# ==========================================
+# 一键开放 VPS 所有端口
+# ⚠️ 警告：仍有安全风险，仅用于测试环境
+# ==========================================
 
-# ================== 颜色定义 ==================
-green="\033[32m"
-red="\033[31m"
-yellow="\033[33m"
-re="\033[0m"
+# 颜色
+RED="\033[31m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+RESET="\033[0m"
 
-# ================== 工具函数 ==================
-random_port() {
-    shuf -i 2000-65000 -n 1
-}
+echo -e "${YELLOW}检测系统类型...${RESET}"
 
-check_port() {
-    local port=$1
-    while [[ -n $(lsof -i :$port 2>/dev/null) ]]; do
-        echo -e "${red}${port}端口已经被占用，请更换端口重试${re}"
-        read -p "请输入端口（直接回车使用随机端口）: " port
-        [[ -z $port ]] && port=$(random_port) && echo -e "${green}使用随机端口: $port${re}"
-    done
-    echo $port
-}
-
-install_lsof() {
-    if ! command -v lsof &>/dev/null; then
-        if [ -f "/etc/debian_version" ]; then
-            apt update && apt install -y lsof
-        elif [ -f "/etc/alpine-release" ]; then
-            apk add lsof
-        fi
+# --------------------------
+# 自动安装函数
+# --------------------------
+install_package() {
+    local pkg="$1"
+    if [[ -f /etc/alpine-release ]]; then
+        echo -e "${YELLOW}检测到 Alpine，安装 $pkg ...${RESET}"
+        apk update && apk add --no-cache "$pkg"
+    elif [[ -f /etc/debian_version ]]; then
+        echo -e "${YELLOW}检测到 Debian/Ubuntu，安装 $pkg ...${RESET}"
+        apt-get update && apt-get install -y "$pkg"
+    elif [[ -f /etc/redhat-release ]]; then
+        echo -e "${YELLOW}检测到 CentOS/RHEL，安装 $pkg ...${RESET}"
+        yum install -y "$pkg"
+    else
+        echo -e "${RED}❌ 未知系统，请手动安装 $pkg${RESET}"
+        exit 1
     fi
 }
 
-install_jq() {
-    if ! command -v jq &>/dev/null; then
-        if [ -f "/etc/debian_version" ]; then
-            apt update && apt install -y jq
-        elif [ -f "/etc/alpine-release" ]; then
-            apk add jq
-        fi
+# --------------------------
+# Debian/Ubuntu 切换 iptables-legacy
+# --------------------------
+setup_iptables_legacy() {
+    if ! command -v iptables >/dev/null 2>&1; then
+        apt-get update && apt-get install -y iptables iptables-legacy
+    fi
+    if command -v iptables-legacy >/dev/null 2>&1; then
+        update-alternatives --install /usr/sbin/iptables iptables /usr/sbin/iptables-legacy 10
+        update-alternatives --install /usr/sbin/ip6tables ip6tables /usr/sbin/ip6tables-legacy 10
+        update-alternatives --set iptables /usr/sbin/iptables-legacy
+        update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+        IPT_CMD="iptables"
+    else
+        IPT_CMD="iptables"
     fi
 }
 
-# ================== 主菜单 ==================
-while true; do
-    clear
-    echo "--------------"
-    echo -e "${green}1. 安装 Reality${re}"
-    echo -e "${green}2. 查看 Reality 状态${re}"
-    echo -e "${green}3. 更改 Reality 端口${re}"
-    echo -e "${green}4. 卸载 Reality${re}"
-    echo "--------------"
-    echo -e "${green}0. 退出${re}"
-    echo "--------------"
+# --------------------------
+# 检测防火墙
+# --------------------------
+if command -v ufw >/dev/null 2>&1; then
+    FW_TYPE="ufw"
+elif command -v iptables >/dev/null 2>&1; then
+    FW_TYPE="iptables"
+    [[ -f /etc/debian_version ]] && setup_iptables_legacy || IPT_CMD="iptables"
+elif command -v nft >/dev/null 2>&1; then
+    FW_TYPE="nftables"
+else
+    if [[ -f /etc/alpine-release ]]; then
+        install_package nftables
+        FW_TYPE="nftables"
+        rc-update add nftables && service nftables start
+    elif [[ -f /etc/debian_version ]]; then
+        install_package ufw
+        FW_TYPE="ufw"
+    elif [[ -f /etc/redhat-release ]]; then
+        install_package iptables
+        FW_TYPE="iptables"
+        IPT_CMD="iptables"
+    else
+        echo -e "${RED}❌ 未知系统，无法安装防火墙${RESET}"
+        exit 1
+    fi
+fi
 
-    read -p $'\033[1;32m请输入你的选择: \033[0m' sub_choice
-    case $sub_choice in
-        1)
-            clear
-            install_lsof
-            read -p $'\033[1;32m请输入Reality节点端口（回车随机端口）: \033[0m' port
-            [[ -z $port ]] && port=$(random_port)
-            port=$(check_port $port)
+# --------------------------
+# 开放所有端口
+# --------------------------
+echo -e "${GREEN}检测到防火墙: $FW_TYPE，开始配置...${RESET}"
 
-            echo -e "${green}开始安装 Reality...${re}"
-            PORT=$port bash <(curl -fsSL https://raw.githubusercontent.com/Polarisiu/proxy/main/azreality.sh)
+if [[ "$FW_TYPE" == "ufw" ]]; then
+    ufw --force reset
+    ufw default allow incoming
+    ufw default allow outgoing
+    ufw --force enable
 
-            echo -e "${green}Reality 安装完成！端口: $port${re}"
-            sleep 1
-            ;;
-        2)
-            clear
-            echo -e "${green}正在检查 Reality 运行状态...${re}"
-            if [ -f "/etc/alpine-release" ]; then
-                if pgrep -f 'web' >/dev/null; then
-                    echo -e "${green}✅ Reality 正在运行${re}"
-                    port=$(jq -r '.inbounds[0].port' ~/app/config.json 2>/dev/null)
-                    [[ -n $port ]] && echo -e "${green}当前端口: $port${re}"
-                else
-                    echo -e "${red}❌ Reality 未运行${re}"
-                fi
-            else
-                if systemctl is-active --quiet xray; then
-                    echo -e "${green}✅ Reality 正在运行 (systemd 管理)${re}"
-                    port=$(jq -r '.inbounds[] | select(.protocol=="vless").port' /usr/local/etc/xray/config.json 2>/dev/null)
-                    [[ -n $port ]] && echo -e "${green}当前端口: $port${re}"
-                else
-                    echo -e "${red}❌ Reality 未运行${re}"
-                fi
-            fi
-            read -p "按回车返回菜单..."
-            ;;
-        3)
-            clear
-            install_jq
-            read -p $'\033[1;32m请输入新 Reality 端口（回车随机端口）: \033[0m' new_port
-            [[ -z $new_port ]] && new_port=$(random_port)
-            new_port=$(check_port $new_port)
+elif [[ "$FW_TYPE" == "iptables" ]]; then
+    $IPT_CMD -F
+    $IPT_CMD -X
+    $IPT_CMD -t nat -F
+    $IPT_CMD -t nat -X
+    $IPT_CMD -t mangle -F
+    $IPT_CMD -t mangle -X
+    $IPT_CMD -P INPUT ACCEPT
+    $IPT_CMD -P OUTPUT ACCEPT
+    $IPT_CMD -P FORWARD ACCEPT
+    echo -e "${GREEN}所有端口已开放（iptables）${RESET}"
 
-            if [ -f "/etc/alpine-release" ]; then
-                jq --argjson new_port "$new_port" \
-                   '(.inbounds[] | select(.protocol=="vless")).port = $new_port' \
-                   ~/app/config.json > tmp.json && mv tmp.json ~/app/config.json
-                pkill -f 'web'
-                cd ~/app
-                nohup ./web -c config.json >/dev/null 2>&1 &
-            else
-                jq --argjson new_port "$new_port" \
-                   '(.inbounds[] | select(.protocol=="vless")).port = $new_port' \
-                   /usr/local/etc/xray/config.json > tmp.json && mv tmp.json /usr/local/etc/xray/config.json
-                systemctl restart xray.service
-            fi
-            echo -e "${green}Reality端口已更换成 $new_port，请手动更新客户端配置！${re}"
-            sleep 1
-            ;;
-        4)
-            clear
-            if [ -f "/etc/alpine-release" ]; then
-                pkill -f 'web'
-                rm -rf ~/app
-            else
-                systemctl stop xray 2>/dev/null
-                systemctl disable xray 2>/dev/null
-                rm -f /usr/local/bin/xray \
-                      /etc/systemd/system/xray.service \
-                      /usr/local/etc/xray/config.json \
-                      /usr/local/share/xray/geoip.dat \
-                      /usr/local/share/xray/geosite.dat \
-                      /etc/systemd/system/xray@.service
-                rm -rf /var/log/xray /var/lib/xray
-                systemctl daemon-reload
-            fi
-            echo -e "${green}Reality 已卸载${re}"
-            sleep 1
-            ;;
-        0)
-            echo -e "${green}已退出脚本${re}"
-            exit 0
-            ;;
-        *)
-            echo -e "${red}无效输入！${re}"
-            sleep 1
-            ;;
-    esac
-done
+elif [[ "$FW_TYPE" == "nftables" ]]; then
+    nft flush ruleset
+    nft add table inet filter
+    nft add chain inet filter input   "{ type filter hook input priority 0 ; policy accept ; }"
+    nft add chain inet filter forward "{ type filter hook forward priority 0 ; policy accept ; }"
+    nft add chain inet filter output  "{ type filter hook output priority 0 ; policy accept ; }"
+    echo -e "${GREEN}所有端口已开放（nftables）${RESET}"
+fi
+
+echo -e "${YELLOW}⚠️ VPS 所有端口已开放，仍存在安全风险${RESET}"
