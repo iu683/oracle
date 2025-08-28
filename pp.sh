@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-# 一键开放 VPS 所有端口
+# 一键开放 VPS 所有端口 + 自动安装 iptables-legacy
 # ⚠️ 警告：仍有安全风险，仅用于测试环境
 # ==========================================
 
@@ -9,6 +9,14 @@ RED="\033[31m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
 RESET="\033[0m"
+
+# --------------------------
+# 检查 root 权限
+# --------------------------
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}❌ 请使用 root 权限运行此脚本${RESET}"
+    exit 1
+fi
 
 echo -e "${YELLOW}检测系统类型...${RESET}"
 
@@ -53,7 +61,7 @@ install_iptables_if_missing() {
 }
 
 # --------------------------
-# 检测防火墙
+# 检测防火墙类型
 # --------------------------
 if command -v ufw >/dev/null 2>&1; then
     FW_TYPE="ufw"
@@ -90,6 +98,7 @@ if [[ "$FW_TYPE" == "ufw" ]]; then
     ufw default allow incoming
     ufw default allow outgoing
     ufw --force enable
+    echo -e "${GREEN}所有端口已开放（ufw）${RESET}"
 
 elif [[ "$FW_TYPE" == "iptables" ]]; then
     $IPT_CMD -F
