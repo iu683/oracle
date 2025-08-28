@@ -82,7 +82,7 @@ show_system_usage() {
     done
 
     if [ "$max_level" -eq 0 ]; then
-        system_status="${green}系统状态：正常✅${reset}"
+        system_status="${green}系统状态：正常 ✔${reset}"
     elif [ "$max_level" -eq 1 ]; then
         system_status="${yellow}系统状态：警告 ⚠️${reset}"
     else
