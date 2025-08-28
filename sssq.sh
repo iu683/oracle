@@ -156,7 +156,7 @@ show_main_menu() {
 
 
     # 当前日期时间显示在框下、菜单上
-    echo -e "🖥️ 系统：${green}${system_name}${re} ｜ 🌍 时区：${white}${timezone}${re} ｜ 🈯 语言：${white}${language}${re} ｜ 🧩 架构：${purple}${cpu_arch}${re}"
+    echo -e "${red}🖥️系统：${yellow}${system_name}${re} ｜ ${red}🌍 时区：${yellow}${timezone}${re} ｜ ${red}🈯 语言：${yellow}${language}${re} ｜ ${red}🧩 架构：${yellow}${cpu_arch}${re}"
     datetime=$(date "+%Y-%m-%d %H:%M:%S")
     echo -e "${yellow}🕒 当前时间：${datetime}${reset}\n"
 
