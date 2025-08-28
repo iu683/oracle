@@ -575,7 +575,6 @@ main_menu() {
             # Docker 未安装时只显示 iptables 状态
             echo -e "${YELLOW}iptables: $(current_iptables)${RESET}"
         fi
-        echo ""
         echo -e "${GREEN}01. 安装/更新 Docker（自动检测国内/国外源）${RESET}"
         echo -e "${GREEN}02. 安装/更新 Docker Compose${RESET}"
         echo -e "${GREEN}03. 卸载 Docker & Compose${RESET}"
@@ -590,7 +589,7 @@ main_menu() {
         echo -e "${GREEN}12. Docker 备份/恢复${RESET}"
         echo -e "${GREEN}13. 卷管理 ${RESET}"
         echo -e "${GREEN}14. 一键清理所有未使用容器/镜像/卷${RESET}"
-        echo -e "15. ${YELLOW}重启 Docker${RESET}"
+        echo -e "${GREEN}15.${RESET} ${YELLOW}重启 Docker${RESET}"
         echo -e "${GREEN}0.  退出${RESET}"
 
         read -p "请选择: " choice
