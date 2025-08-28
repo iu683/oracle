@@ -161,7 +161,7 @@ show_main_menu() {
     term_width=$(tput cols)
 
     # 打印对齐的系统信息（左边红色固定宽度，右边黄色自适应终端宽度）
-    printf "${red}%-12s${yellow}%-*s${re}\n" "🖥️ 系统："      $((term_width-15)) "$system_name"
+    printf "${red}%-12s${yellow}%-*s${re}\n" "🖥️系统："      $((term_width-15)) "$system_name"
     printf "${red}%-12s${yellow}%-*s${re}\n" "🌍 时区："      $((term_width-15)) "$timezone"
     printf "${red}%-12s${yellow}%-*s${re}\n" "🈯 语言："      $((term_width-15)) "$language"
     printf "${red}%-12s${yellow}%-*s${re}\n" "🧩 架构："      $((term_width-15)) "$cpu_arch"
