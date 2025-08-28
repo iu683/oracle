@@ -34,7 +34,7 @@ elif command -v firewall-cmd >/dev/null 2>&1; then
 #    if command -v netfilter-persistent >/dev/null 2>&1; then
 #        netfilter-persistent save
 #    fi
-#fi
+fi
 
 # 重启 SSH 服务（兼容多种系统）
 if systemctl list-unit-files | grep -q sshd.service; then
