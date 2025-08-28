@@ -570,10 +570,10 @@ main_menu() {
             docker_status=$(docker info &>/dev/null && echo "运行中" || echo "未运行")
             total=$(docker ps -a -q 2>/dev/null | wc -l)
             running=$(docker ps -q 2>/dev/null | wc -l)
-            echo -e "${YELLOW}iptables: $(current_iptables) | Docker: $docker_status | 总容器: $total | 运行中: $running${RESET}"
+            echo -e "🐳${YELLOW}iptables: $(current_iptables) | Docker: $docker_status | 总容器: $total | 运行中: $running${RESET}"
         else
             # Docker 未安装时只显示 iptables 状态
-            echo -e "${YELLOW}iptables: $(current_iptables)${RESET}"
+            echo -e "🐳${YELLOW}iptables: $(current_iptables)${RESET}"
         fi
         echo -e "${GREEN}01. 安装/更新 Docker（自动检测国内/国外源）${RESET}"
         echo -e "${GREEN}02. 安装/更新 Docker Compose${RESET}"
