@@ -162,7 +162,7 @@ show_main_menu() {
     echo -e "${red}🈯 语言      ：${yellow}${language}${re}"
     echo -e "${red}🧩 架构      ：${yellow}${cpu_arch}${re}"
     echo -e "${red}🕒 当前时间  ：${yellow}${datetime}${re}\n"
-
+    echo -e "${green}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${re}\n"
     # 显示菜单
     for i in "${!MAIN_MENU[@]}"; do
         if [[ $i -eq 8 ]]; then  # 第9项（索引从0开始）
