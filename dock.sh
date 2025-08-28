@@ -54,15 +54,15 @@ restart_docker() {
 }
 
 # -----------------------------
-# 检查 Docker 是否运行
+# 检测 Docker 是否安装并运行
 # -----------------------------
 check_docker_running() {
     if ! command -v docker &>/dev/null; then
-        echo -e "${RED}Docker 未安装${RESET}"
+        echo -e "${RED}❌ Docker 未安装，请先安装 Docker${RESET}"
         return 1
     fi
     if ! docker info &>/dev/null; then
-        echo -e "${YELLOW}Docker 未运行，尝试启动...${RESET}"
+        echo -e "${YELLOW}⚠️ Docker 未运行，尝试启动...${RESET}"
         if systemctl list-unit-files | grep -q "^docker.service"; then
             systemctl start docker
         else
@@ -71,10 +71,9 @@ check_docker_running() {
         fi
     fi
     if ! docker info &>/dev/null; then
-        echo -e "${RED}Docker 启动失败，请检查日志${RESET}"
+        echo -e "${RED}❌ Docker 启动失败，请检查日志${RESET}"
         return 1
     fi
-    echo -e "${GREEN}Docker 已启动${RESET}"
     return 0
 }
 
@@ -552,7 +551,7 @@ docker_backup_menu() {
 
 
 # -----------------------------
-# 主菜单
+# 主菜单显示状态
 # -----------------------------
 main_menu() {
     root_use
@@ -561,14 +560,22 @@ main_menu() {
         echo -e "\033[36m"
         echo "  ____             _             "
         echo " |  _ \  ___   ___| | _____ _ __ "
-        echo " | | | |/ _ \ / __| |/ / _ \ '__|"
+        echo " | | |/ _ \ / __| |/ / _ \ '__|"
         echo " | |_| | (_) | (__|   <  __/ |   "
         echo " |____/ \___/ \___|_|\_\___|_|   "
         echo -e "\033[33m🐳 一键 VPS Docker 管理工具${RESET}"
 
-        echo -e "${YELLOW}iptables: $(current_iptables) | Docker: $(docker_status) | $(docker_container_info)${RESET}"
+        # 检测 Docker 状态
+        if command -v docker &>/dev/null; then
+            docker_status=$(docker info &>/dev/null && echo "运行中" || echo "未运行")
+            total=$(docker ps -a -q 2>/dev/null | wc -l)
+            running=$(docker ps -q 2>/dev/null | wc -l)
+            echo -e "${YELLOW}iptables: $(current_iptables) | Docker: $docker_status | 总容器: $total | 运行中: $running${RESET}"
+        else
+            # Docker 未安装时只显示 iptables 状态
+            echo -e "${YELLOW}iptables: $(current_iptables)${RESET}"
+        fi
         echo ""
-        
         echo -e "${GREEN}01. 安装/更新 Docker（自动检测国内/国外源）${RESET}"
         echo -e "${GREEN}02. 安装/更新 Docker Compose${RESET}"
         echo -e "${GREEN}03. 卸载 Docker & Compose${RESET}"
@@ -591,24 +598,25 @@ main_menu() {
             01|1) docker_install_update ;;
             02|2) docker_compose_install_update ;;
             03|3) docker_uninstall ;;
-            04|4) docker_ps ;;
-            05|5) docker_image ;;
-            06|6) docker_ipv6_on ;;
-            07|7) docker_ipv6_off ;;
+            04|4) check_docker_running && docker_ps ;;
+            05|5) check_docker_running && docker_image ;;
+            06|6) check_docker_running && docker_ipv6_on ;;
+            07|7) check_docker_running && docker_ipv6_off ;;
             08|8) open_all_ports ;;
-            09|9) docker_network ;;
+            09|9) check_docker_running && docker_network ;;
             10) switch_iptables_legacy ;;
             11) switch_iptables_nft ;;
-            12) docker_backup_menu ;;
-            13) docker_volume ;;
-            14) docker_cleanup ;;
-            15) restart_docker ;;
+            12) check_docker_running && docker_backup_menu ;;
+            13|13) check_docker_running && docker_volume ;;
+            14|14) check_docker_running && docker_cleanup ;;
+            15|15) check_docker_running && restart_docker ;;
             0) exit 0 ;;
             *) echo "无效选择" ;;
         esac
         read -p "按回车继续..."
     done
 }
+
 
 
 
