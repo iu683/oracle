@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+# ===============================
+# 一键修改主机名脚本（立即生效 + SSH 提示符持久化）
+# 支持 Debian / Ubuntu / CentOS / Rocky / AlmaLinux / Amazon Linux / Alpine
+# ===============================
+
 # 颜色
 GREEN="\033[32m"
 RED="\033[31m"
@@ -37,18 +42,18 @@ fi
 
 # 修改主机名
 case $ID in
-    "alpine")
+    "alpine" | "debian" | "ubuntu" | "centos" | "fedora" | "rocky" | "amzn" | "almalinux")
+        # 写入 /etc/hostname
         echo "$new_hostname" > /etc/hostname
-        hostname "$new_hostname"
-        if ! grep -q "$new_hostname" /etc/hosts; then
-            echo "127.0.0.1   $new_hostname" >> /etc/hosts
-        fi
-        ;;
-    "debian" | "ubuntu" | "centos" | "fedora" | "rocky" | "amzn" | "almalinux")
-        hostnamectl set-hostname "$new_hostname"
+
+        # 刷新当前 shell 主机名
         hostname "$new_hostname"
         export HOSTNAME="$new_hostname"
-        if ! grep -q "$new_hostname" /etc/hosts; then
+
+        # 修改 /etc/hosts
+        if grep -q "$current_hostname" /etc/hosts; then
+            sed -i "s/$current_hostname/$new_hostname/g" /etc/hosts
+        else
             echo "127.0.0.1   $new_hostname" >> /etc/hosts
         fi
         ;;
@@ -58,8 +63,15 @@ case $ID in
         ;;
 esac
 
-# 刷新 shell 的 hostname 显示
+# 更新当前 shell 提示符
 PS1="\u@${new_hostname}:\w\$ "
+
+# 持久化提示符到 root 用户 .bashrc
+BASHRC_FILE="/root/.bashrc"
+if ! grep -q "PS1=.*@${new_hostname}" "$BASHRC_FILE"; then
+    echo "export PS1='\\u@${new_hostname}:\\w\\$ '" >> "$BASHRC_FILE"
+fi
 
 echo -e "${GREEN}✅ 主机名已更改为: ${YELLOW}${new_hostname}${RESET}"
 echo -e "${YELLOW}当前 shell 已刷新，新的主机名立即生效${RESET}"
+echo -e "${YELLOW}重启或新开终端后，提示符将显示新主机名${RESET}"
