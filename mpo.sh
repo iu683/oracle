@@ -150,7 +150,7 @@ function modify_proxy() {
     fi
 
     IP=$(get_ip)
-    SECRET=$(docker logs --tail 50 ${NAME} 2>&1 | grep "MTProxy Secret" | awk '{print $NF}' | tail -n1)
+    SECRET=$(docker logs --tail 50 ${NAME} 2>&1 | grep "MTProxy Secret:" | tail -n1 | sed 's/.*MTProxy Secret: //g' | tr -d '[:space:]')
 
     echo -e "\n${GREEN}✅ 配置修改完成！代理信息如下：${RESET}"
     echo "服务器 IP: $IP"
