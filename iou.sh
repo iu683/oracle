@@ -181,53 +181,55 @@ swap_info="未启用"
 runtime=$(awk -F. '{run_days=int($1/86400); run_hours=int(($1%86400)/3600); run_minutes=int(($1%3600)/60); if(run_days>0) printf("%d天 ",run_days); if(run_hours>0) printf("%d时 ",run_hours); printf("%d分\n",run_minutes)}' /proc/uptime)
 
 # ================== 输出信息 ==================
-printf -- "${purple}================= 系统信息详情 =================${re}\n\n"
+echo -e "${white}系统信息详情${re}"
+echo "------------------------"
 
-# 主机与运营商
-printf -- "%b%-12s%b %b%s%b\n" "$green" "主机名:" "$re" "$yellow" "$hostname" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "运营商:" "$re" "$yellow" "$isp_info" "$re"
-printf -- "------------------------\n"
+# 主机名与运营商
+echo -e "${green}主机名: ${yellow}${hostname}${re}"
+echo -e "${green}运营商: ${yellow}${isp_info}${re}"
+echo "------------------------"
 
 # 系统信息
-printf -- "%b%-12s%b %b%s%b\n" "$green" "系统版本:" "$re" "$yellow" "$os_info" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "Linux版本:" "$re" "$yellow" "$kernel_version" "$re"
-printf -- "------------------------\n"
+echo -e "${green}系统版本: ${yellow}${os_info}${re}"
+echo -e "${green}Linux版本: ${yellow}${kernel_version}${re}"
+echo "------------------------"
 
 # CPU信息
-printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU架构:" "$re" "$yellow" "$cpu_arch" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU型号:" "$re" "$yellow" "$cpu_info" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU核心数:" "$re" "$yellow" "$cpu_cores" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "CPU占用:" "$re" "$yellow" "$cpu_usage_percent" "$re"
-printf -- "------------------------\n"
+echo -e "${green}CPU架构: ${yellow}${cpu_arch}${re}"
+echo -e "${green}CPU型号: ${yellow}${cpu_info}${re}"
+echo -e "${green}CPU核心数: ${yellow}${cpu_cores}${re}"
+echo -e "${green}CPU占用: ${yellow}${cpu_usage_percent}${re}"
+echo "------------------------"
 
 # 内存与硬盘
-printf -- "%b%-12s%b %b%s%b\n" "$green" "物理内存:" "$re" "$yellow" "$mem_info" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "虚拟内存:" "$re" "$yellow" "$swap_info" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "硬盘占用:" "$re" "$yellow" "$disk_info" "$re"
-printf -- "------------------------\n"
+echo -e "${green}物理内存: ${yellow}${mem_info}${re}"
+echo -e "${green}虚拟内存: ${yellow}${swap_info}${re}"
+echo -e "${green}硬盘占用: ${yellow}${disk_info}${re}"
+echo "------------------------"
 
 # 网络流量
-IFS=$'\n'
-for line in $net_output; do
-    printf -- "%b%s%b\n" "$yellow" "$line" "$re"
-done
-printf -- "------------------------\n"
+if [[ -n "$net_output" ]]; then
+    while IFS= read -r line; do
+        echo -e "${yellow}${line}${re}"
+    done <<< "$net_output"
+fi
+echo "------------------------"
 
 # 网络算法
-printf -- "%b%-12s%b %b%s %s%b\n" "$green" "网络拥堵算法:" "$re" "$yellow" "$congestion_algorithm" "$queue_algorithm" "$re"
-printf -- "------------------------\n"
+echo -e "${green}网络拥堵算法: ${yellow}${congestion_algorithm} ${queue_algorithm}${re}"
+echo "------------------------"
 
 # 公网IP
-printf -- "%b%-12s%b %b%s%b\n" "$green" "公网IPv4:" "$re" "$yellow" "$ipv4_address" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "公网IPv6:" "$re" "$yellow" "$ipv6_address" "$re"
-printf -- "------------------------\n"
+echo -e "${green}公网IPv4地址: ${yellow}${ipv4_address}${re}"
+echo -e "${green}公网IPv6地址: ${yellow}${ipv6_address}${re}"
+echo "------------------------"
 
-# 地理位置与时间
-printf -- "%b%-12s%b %b%s %s%b\n" "$green" "地理位置:" "$re" "$yellow" "$country" "$city" "$re"
-printf -- "%b%-12s%b %b%s%b\n" "$green" "系统时间:" "$re" "$yellow" "$current_time" "$re"
-printf -- "------------------------\n"
+# 地理位置与系统时间
+echo -e "${green}地理位置: ${yellow}${country} ${city}${re}"
+echo -e "${green}系统时间: ${yellow}${current_time}${re}"
+echo "------------------------"
 
 # 系统运行时长
-printf -- "%b%-12s%b %b%s%b\n" "$green" "系统运行时长:" "$re" "$yellow" "$runtime" "$re"
+echo -e "${green}系统运行时长: ${yellow}${runtime}${re}"
+echo -e "\n${purple}===============================================${re}"
 
-printf -- "\n${purple}===============================================${re}\n"
