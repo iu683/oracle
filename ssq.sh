@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =========================
-# SSH 端口修改最终版脚本
+# SSH 端口修改最终版脚本（含远程检测）
 # =========================
 
 # -------------------------
@@ -76,7 +76,7 @@ fi
 echo -e "\033[1;32mSSH 端口已修改为: $new_port\033[0m"
 
 # -------------------------
-# 安装 ss/netstat
+# 安装 ss/netstat/nc
 # -------------------------
 if ! command -v ss >/dev/null 2>&1; then
     echo "安装 ss..."
@@ -96,8 +96,17 @@ if ! command -v ss >/dev/null 2>&1 && ! command -v netstat >/dev/null 2>&1; then
     fi
 fi
 
+if ! command -v nc >/dev/null 2>&1; then
+    echo "安装 nc (netcat)..."
+    if command -v apt >/dev/null 2>&1; then
+        apt update && apt install -y netcat
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y nc
+    fi
+fi
+
 # -------------------------
-# 检测端口是否监听
+# 检测本地端口是否监听
 # -------------------------
 echo "检测新端口 $new_port 是否已启动..."
 for i in {1..10}; do
@@ -109,3 +118,23 @@ for i in {1..10}; do
     fi
     [ $i -eq 10 ] && echo -e "\033[1;31m⚠ SSH 端口 $new_port 没有监听，请检查配置\033[0m"
 done
+
+# -------------------------
+# 测试远程端口可达性
+# -------------------------
+echo "检测远程端口 $new_port 是否可达..."
+VPS_IP=$(curl -s https://ifconfig.me)   # 获取公网 IP
+if [ -z "$VPS_IP" ]; then
+    echo "⚠ 无法获取公网 IP，跳过远程检测"
+else
+    if command -v nc >/dev/null 2>&1; then
+        timeout 3 nc -zv $VPS_IP $new_port &>/dev/null
+        if [ $? -eq 0 ]; then
+            echo -e "\033[1;32m✔ 远程端口 $new_port 可访问\033[0m"
+        else
+            echo -e "\033[1;31m⚠ 远程端口 $new_port 无法访问，请检查 VPS 网络策略或安全组\033[0m"
+        fi
+    else
+        echo "⚠ nc 不可用，无法测试远程端口"
+    fi
+fi
